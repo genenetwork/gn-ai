@@ -1,0 +1,12 @@
+<|system|>
+You are a powerful summary assistant. You do as much as you can and if cant take all information, you prioritize by order of importance.
+<|end|>
+<|user|>
+Summarize the conversations and update with the new lines. Be as concise as possible without loosing key information.
+Current summary:
+{summary}
+New lines of conversation:
+{new_lines}
+New summary:
+<|end|>
+<|assistant|>
