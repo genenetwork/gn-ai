@@ -191,13 +191,13 @@ class GNQNA():
 
         prompt = f"""
         <|im_start|>system
-        You are powerful query generator and you strictly follow instructions
+        You are powerful query generator and you strictly follow instructions.
+        Generate a list of queries to retrieve relevant documents relevant to
+        the question below. Return only a valid list, nothing else.
         <|im_end|>
         <|im_start|>user
-        Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Return only the list, nothing else.
-        Question: Compare lodscore at Rs2120 for traitBxd_12680
-        and traitBxd_20496
+        Question:
+        Compare lodscore at Rs2120 for traitBxd_12680 and traitBxd_20496
         Answer:
         <|im_end|>
         <|im_start|>assistant
@@ -205,9 +205,9 @@ class GNQNA():
         "lodscore at Rs2120 for traitBxd_20496"]
         <|im_end|>
         <|im_start|>user
-        Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Return only the list, nothing else.
-        Question: {state['input']}
+        Question:
+        {state['input']}
+        Answer:
         <|im_end|>
         <|im_start|>assistant"""
 
@@ -256,12 +256,28 @@ class GNQNA():
              <|im_start|>system
              You are an experienced analyst that can use available information
              to provide accurate and concise feedback.
+             Answer the question below using provided information.
              <|im_end|>
              <|im_start|>user
-             Answer the question below using following information.
-             Context: {context}
-             History: {existing_history}
-             Question: {state["input"]}
+             Context:
+             Trait A has a lod score of 2.9 at the marker Rsm1001.
+             Trait B has a lod score of 3.5 for Rsm1001.
+             History:
+             No lod score found for trait A and B so far.
+             Question:
+             What is the lod score of trait A and B at marker Rsm1001?
+             Answer:
+             <|im_end|>
+             <|im_start|>assistant
+             Trait A and B have a lod score of 2.9 and 3.5 respectively at
+             Rsm1001.
+             <|im_start|>user
+             Context:
+             {context}
+             History:
+             {existing_history}
+             Question:
+             {state["input"]}
              Answer:
              <|im_end|>
              <|im_start|>assistant"""
@@ -288,32 +304,35 @@ class GNQNA():
         prompt = f"""
             <|im_start|>system
             You are an expert in evaluating data relevance. You do it seriously.
+            Assess if provided answer is relevant to the query given context.
+            Return strictly your answer as yes or no. Do not add anything else.
             <|im_end|>
             <|im_start|>user
-            Assess if the provided answer is relevant to the query given context
-            Answer is relevant if the trait in query is also in the answer.
-            Return strictly your answer as yes or no. Do not add anything else.
-            Answer: The lodscore at Rs31201062 for traitBxd_18454 is 4.69
-            Query: What is the lodscore of traitBxd_18454 at locus Rs31201062?
+            Answer:
+            The lodscore at Rs31201062 for traitBxd_18454 is 4.69
+            Query:
+            What is the lodscore of traitBxd_18454 at locus Rs31201062?
             Context: traitBxd_18454 has a lodScore of 4.69, a locus Rs31201062
+            Decision:
             <|im_end|>
             <|im_start|>assistant
             yes
             <|im_end|>
             <|im_start|>user
-            Assess if the provided answer is relevant to the query given context
-            Answer is relevant if trait in query figures in context and answer.
-            Return strictly your answer as yes or no. Do not add anything else.
-            Answer: {state["answer"]}
-            Query: {state["input"]}
-            Context: {context}
+            Answer:
+            {state["answer"]}
+            Query:
+            {state["input"]}
+            Context:
+            {context}
+            Decision:
             <|im_end|>
             <|im_start|>assistant"""
         async with self.generative_lock:
             assessment = GENERATIVE_MODEL.invoke(prompt)
         print(f"\nAssessment in checking relevance: {assessment}")
 
-        if "yes" in assessment:
+        if "yes" in assessment.lower():
             should_continue = "summarize"
         else:
             should_continue = "end"
@@ -340,11 +359,21 @@ class GNQNA():
         prompt = f"""
             <|im_start|>system
             You are an excellent and concise summary maker.
+            Summarize in bullet points the conversation below.
             <|im_end|>
             <|im_start|>user
-            Summarize in bullet points the conversation below.
-            Follow this format: input - answer
-            Conversation: {full_context}
+            Conversation:
+            Trait A has a lod score of 4.7 at marker Rs71192.
+            Trait B has a lod score of 1.9 at marker Rs71192.
+            Those 2 traits are related to an immune disease.
+            Summary:
+            <|im_start|>assistant
+            Two traits involved in diabetes have a lod score of 1.9 and 4.7 at
+            Rs71192.
+            <|im_start|>user
+            Conversation:
+            {full_context}:
+            Summary:
             <|im_end|>
             <|im_start|>assistant"""
         async with self.generative_lock:
@@ -362,16 +391,31 @@ class GNQNA():
         else:
             prompt = f"""
             <|system|>
-            You are an expert synthesizer. Compile the following summarized \
-            interactions into a single, well-structured paragraph that answers \
-            the original question coherently. \
-            Ensure the response is insightful, concise, and draws \
+            You are an expert synthesizer. Compile the following summarized
+            interactions into a single, well-structured paragraph that answers
+            the original question coherently.
+            Ensure the response is insightful, concise, and draws
             logical inferences where possible.
+            Provide only the final paragraph, nothing else.
             <|end|>
             <|user|>
-            Original question: {state["input"]}
-            Summarized history: {updated_history}
-            Provide only the final paragraph, nothing else.
+            Original question:
+            Take traits and B and compare their lod scores at Rs71192
+            Summarized history:
+            Traits A and B involved in diabetes have a lod score of
+            1.9 and 4.7 at Rs71192.
+            Conclusion:
+            <|end|>
+            <|assistant|>
+            The lod score at Rs71192 for trait A (1.9) is less than
+            for trait B (4.7).
+            <|end|>
+            <|user|>
+            Original question:
+            {state["input"]}
+            Summarized history:
+            {updated_history}
+            Conclusion:
             <|end|>
             <|assistant|>"""
             
@@ -431,24 +475,31 @@ class GNQNA():
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
             <|im_start|>user
-            Query: Identify traits with lod score > 4.0 at specific locus.
+            Query:
+            Identify traits with lod score > 4.0 at specific locus.
             Compare lod scores per locus.
+            Result:
             <|im_end|>
             <|im_start|>assistant
             ["Identify traits with lod score > 4.0 at specific locus", 
             "Compare lod scores per locus"]
             <|im_end|>
             <|im_start|>user
-            Query: Collect lod scores on chromosome 1 and 2 for traits A and B.
+            Query:
+            Collect lod scores on chromosome 1 and 2 for traits A and B.
             Tell markers with similar lod scores.
+            Result:
             <|im_end|>
             <|im_start|>assistant
-            ["Collect lod scores on chromosome 1 and 2 for traits A and B", \
+            ["Collect lod scores on chromosome 1 and 2 for traits A and B",
             "Tell markers with similar lod scores"]
             <|im_start|>user
-            Query: {query}
+            Query:
+            {query}
+            Result:
             <|im_end|>
             <|im_start|>assistant"""
+        
         async with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
         if isinstance(response, str):
@@ -468,16 +519,36 @@ class GNQNA():
 
         prompt = f"""
             <|im_start|>system
-            You are an expert synthesizer. Given the subqueries and \
-            corresponding answers, generate a comprehensive response to the \
-            query. Ensure the response is insightful, concise, and draws \
+            You are an expert synthesizer. Given the subqueries and
+            corresponding answers, generate a comprehensive response to the
+            query. Ensure the response is insightful, concise, and draws 
             logical inferences where possible.
+            Provide only the overall response, nothing else.
             <|im_end|>
             <|im_start|>user
-            Query: {query}
-            Subqueries: {subqueries}
-            Answers: {answers}
-            Provide only the overall response, nothing else.
+            Query:
+            Identify two traits related to diabetes.
+            Compare their lod scores at Rsm149505.
+            Subqueries:
+            ["Identify two traits related to diabetes",
+            "Compare lod scores of same traits at Rsm149505"]
+            Answers:
+            ["Traits A and B are related to diabetes",
+            "The lod score at Rsm149505 is 2.3 and 3.4 for trait A and B"]
+            Conclusion:
+            <|im_end|>
+            <|im_start|>assistant
+            Traits A and B are related to diabetes and have a lod score of
+            2.3 and 3.4 at Rsm149505.
+            <|im_end|>
+            <|im_start|>user
+            Query:
+            {query}
+            Subqueries:
+            {subqueries}
+            Answers:
+            {answers}
+            Conclusion:
             <|im_end|>
             <|im_start|>assistant"""
         async with self.generative_lock:
