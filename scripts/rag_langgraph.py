@@ -1,9 +1,10 @@
 """
 This scripts runs through a demo on the use of a multi-agent system for genomic analysis
 Embedding model = Qwen/Qwen3-Embedding-0.6B
-Generative model = calme-3.2-instruct-78b-Q4_K_S
+Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
+Summary model = Phi-3-mini-4k-instruct (small model)
+Author: Johannes Medagbe
 """
-import click
 import os
 import sys
 import time
@@ -35,6 +36,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # XXX: Remove hard-coded path.
 CORPUS_PATH = "/home/johannesm/corpus/"
 
+# XXX: Remove hard_coded path.
+PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
+
 # XXX: Remove hard-coded path.
 DB_PATH = "/home/johannesm/tmp/chroma_db"
 
@@ -49,30 +53,47 @@ GENERATIVE_MODEL = LlamaCpp(
     temperature=0,
     verbose=False)
 
+# XXX: Remove hard-coded paths.
+SUMMARY_MODEL=LlamaCpp(
+    model_path="/home/johannesm/pretrained_models/Phi-3-mini-4k-instruct-fp16.gguf",
+    max_tokens=1_000,
+    n_ctx=4_096,
+    seed=2025,
+    temperature=0,
+    verbose=False)
 
 class State(TypedDict):
     input: str
     chat_history: list[str]
     context: list[str]
-    digested_context: list[str]
     answer: str
-    result_count: int
-    iterations: int
     should_continue: str
-    target: int
-    max_iterations: int
-    seen_documents: list
     
 @dataclass
 class GNQNA():
     corpus_path: str
+    pcorpus_path: str
     db_path: str
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    
+    generative_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
+    summary_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
+    retriever_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
     def __post_init__(self):
-        self.docs=self.corpus_to_docs(self.corpus_path)
+
+        if not Path(self.pcorpus_path).exists():
+            self.docs = self.corpus_to_docs(self.corpus_path)
+            with open(self.pcorpus_path, 'w') as file:
+                file.write(json.dumps(self.docs))
+        else:
+            with open(self.pcorpus_path) as file:
+                data = file.read()
+                self.docs = json.loads(data)
+                
         self.chroma_db=self.set_chroma_db(
             docs = self.docs,
             embed_model=HuggingFaceEmbeddings(
@@ -80,39 +101,74 @@ class GNQNA():
             db_path=self.db_path)
 
         # Init'ing the ensemble retriever
-        bm25_retriever = BM25Retriever.from_texts(self.docs)
-        bm25_retriever.k = 5   # KLUDGE: Explain why the magic number 5
+        # Explain magic numbers and magic array
+        bm25_retriever = BM25Retriever.from_texts(self.docs, k=5)
         self.ensemble_retriever=EnsembleRetriever(
-            retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
-            weights = [0.3, 0.7])  # KLUDGE: Explain why the magic array
+            retrievers = [self.chroma_db.as_retriever( \
+                search_kwargs={"k": 5}), bm25_retriever], weights=[0.4, 0.6])
 
-    
     def corpus_to_docs(self, corpus_path: str) -> list:
-        """Convert a corpus into an array of sentences.
-        KLUDGE: XXXX: Corpus of text should be RDF.  This here
-        is for testing.
-        """
+        print("In corpus_to_docs")
         start = time.time()
+
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
+
         turtles = glob(f"{corpus_path}rdf_data*.ttl")
         g = Graph()
         for turtle in turtles:    
             g.parse(turtle, format='turtle')
+
         docs = []
-        for subject in set(g.subjects()):
-            text = f"Entity {subject}\n"
+        total = len(set(g.subjects()))
+
+        for subject in tqdm(set(g.subjects())):
+            text = f"{subject}:"
             for predicate, obj in g.predicate_objects(subject):
-                text += f"has {predicate} of {obj}\n"
-            docs.append(text)
+                text += f"{predicate}:{obj}\n"
+
+            prompt = f"""
+                <|im_start|>system
+                You are extremely good at naturalizing RDF and inferring meaning
+                <|im_end|>
+                <|im_start|>user
+                Take following data and make it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: "http://genenetwork.org/id/traitBxd_20537:\
+                http://purl.org/dc/terms/isReferencedBy: \
+                http://genenetwork.org/id/unpublished22893\n \
+                http://genenetwork.org/term/locus: \
+                http://genenetwork.org/id/Rsm10000002554"
+                <|im_end|>
+                <|im_start|>assistant
+                Result: "traitBxd_20537 is referenced by unpublished22893 \
+                and has been tested for Rsm10000002554"
+                <|im_end|>
+                <|im_start|>user
+                Take following RDF data andmake it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: {text}
+                <|im_start|>end
+                <|im_start|>assistant"""
+
+            response = GENERATIVE_MODEL.invoke(prompt)
+            #print(f"Documents: {response}")
+
+            docs.append(response)
+
+            if len(docs) >= int(total/500):
+                break
+
         end = time.time()
         print(f'corpus_to_docs: {end-start}')
+
         return docs
     
     def set_chroma_db(self, docs: list,
                       embed_model: Any, db_path: str,
                       chunk_size: int = 500) -> Any:
+        print("In set_chroma_db")
         match Path(db_path).exists():
             case True:
                 db = Chroma(persist_directory=db_path,
@@ -128,137 +184,75 @@ class GNQNA():
                     db.persist()
                 return db
 
-    def retrieve(self, state: State) -> dict:
-        # Define graph node for retrieval
-        prompt = f"""
-        You are powerful data retriever and you strictly return
-        what is asked for.
-        Retrieve relevant documents for the query below,
-        excluding these documents: {state.get('seen_documents', [])}
-        Query: {state['input']}"""
-        retrieved_docs = self.ensemble_retriever.invoke(prompt)
-        return {"input": state["input"],
-                "context": retrieved_docs,
-                "digested_context": state.get("digested_context", []),
-                "result_count": state.get("result_count", 0),
-                "target": state.get("target", 10),
-                "max_iterations": state.get("max_iterations", 10),
-                "should_continue": "naturalize",
-                "iterations": state.get("iterations", 0),
-                "chat_history": state.get("chat_history", []),
-                "answer": state.get("answer", ""),
-                "seen_documents": state.get("seen_documents", [])}
+    async def retrieve(self, state: State) -> dict:
 
-    def manage(self, state:State) -> dict:
-        # Define graph node for task orchestration
-        context = state.get("context", [])
-        digested_context = state.get("digested_context", [])
-        answer = state.get("answer", "")
-        iterations = state.get("iterations", 0)
-        chat_history = state.get("chat_history", [])
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 10)
-        max_iterations = state.get("max_iterations", 10)
-        should_continue = state.get("should_continue", "retrieve")
-        # Orchestration logic
-        if iterations >= max_iterations or result_count >= target:
-            should_continue = "summarize"
-        elif should_continue == "retrieve":
-            # Reset fields
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "naturalize" and not context:
-            should_continue = "retrieve"  # Can't naturalize without context
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "analyze" and \
-             (not context or not digested_context):
-            should_continue = "retrieve"  # Can't analyze without context
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "check_relevance" and not answer:
-            should_continue = "analyze"  # Can't check relevance without answer
-        elif should_continue not in ["retrieve", \
-                "naturalize", "check_relevance", "analyze", "summarize"]:
-            should_continue = "summarize"  # Fallback
-        return {"input": state["input"],
-                "should_continue": should_continue,
-                "result_count": result_count,
-                "target": target,
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "context": context,
-                "digested_context": digested_context,
-                "chat_history": chat_history,
-                "answer": answer,
-                "seen_documents": state.get("seen_documents", [])}
+        # Retrieve documents
+        print("\nRetrieving")
 
-
-    def naturalize(self, state: State) -> dict:
-        # Define graph node for RDF naturalization
         prompt = f"""
         <|im_start|>system
-        You are extremely good at naturalizing RDF and inferring meaning.
+        You are powerful query generator and you strictly follow instructions
         <|im_end|>
         <|im_start|>user
-        Take element in the list of RDF triples one by one and
-        make it sounds like Plain English. Repeat for each the subject
-        which is at the start. You should return a list. Nothing else.
-        List: ["Entity http://genenetwork.org/id/traitBxd_20537 \
-        \nhas http://purl.org/dc/terms/isReferencedBy of \
-        http://genenetwork.org/id/unpublished22893", "has \
-        http://genenetwork.org/term/locus of \
-        http://genenetwork.org/id/Rsm10000002554"]
+        Generate a list of queries to retrieve relevant documents relevant to
+        the question below. Return only the list, nothing else.
+        Question: Compare lodscore at Rs2120 for traitBxd_12680
+        and traitBxd_20496
+        Answer:
         <|im_end|>
         <|im_start|>assistant
-        New list: ["traitBxd_20537 isReferencedBy unpublished22893", \
-        "traitBxd_20537 has a locus Rsm10000002554"]
+        ["lodscore at Rs2120 for traitBxd_12680",
+        "lodscore at Rs2120 for traitBxd_20496"]
         <|im_end|>
         <|im_start|>user
-        Take element in the list of RDF triples one by one and
-        make it sounds like Plain English. Repeat for each the subject
-        which is at the start. You should return a list. Nothing else.
-        List: {state.get("context", [])}
-        <|im_start|>end
+        Generate a list of queries to retrieve relevant documents relevant to
+        the question below. Return only the list, nothing else.
+        Question: {state['input']}
+        <|im_end|>
         <|im_start|>assistant"""
-        response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Response in naturalize: {response}")
+
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
+        print(f"\nResponse in retrieve: {response}")
+
         if isinstance(response, str):
-            start=response.find("[")
-            end=response.rfind("]") + 1 # offset by 1 to make slicing
-            response=json.loads(response[start:end])
+            start = response.find("[")
+            end = response.rfind("]") + 1 # offset by 1 for slicing
+            response = json.loads(response[start:end])
         else:
-            response=[]
+            response = []
+        
+        retrieved_docs = []
+        async with self.retriever_lock:
+            for query in response:
+                if query:
+                    retrieved_docs.append(self.ensemble_retriever.invoke(query))
+               
+        new_docs = [doc.page_content for doc_list in retrieved_docs \
+            for doc in doc_list if hasattr(doc, 'page_content')]
+        
+        print(f"Retrieved docs in retrieve: {new_docs}")
+
+        should_continue = "analyze"
+        
         return {"input": state["input"],
-                "context": state.get("context", []),
-                "digested_context": response,
-                "result_count": state.get("result_count", 0),
-                "target": state.get("target", 10),
-                "max_iterations": state.get("max_iterations", 10),
-                "should_continue": "analyze",
-                "iterations": state.get("iterations", 0),
+                "context": new_docs,
+                "should_continue": should_continue,
                 "chat_history": state.get("chat_history", []),
-                "answer": state.get("answer", ""),
-                "seen_documents": state.get("seen_documents", [])}
-    
-    def analyze(self, state:State) -> dict:
-        # Define graph node for analysis and text generation
-        context = "\n".join(state.get("digested_context", []))
+                "answer": state.get("answer", "")}
+
+    async def analyze(self, state:State) -> dict:
+
+        # Analyze documents
+        print("\nAnalysing")
+
+        context = "\n".join(state.get("context", [])) \
+            if state.get("context", []) else ""
+
         existing_history="\n".join(state.get("chat_history", [])) \
-            if state.get("chat_history") else ""
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 10)
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 10)
-        if not context: # Cannot proceed without context
-            should_continue = "summarize" if iterations >= max_iterations \
-                or result_count >= target else "retrieve"
-            response = ""
-        else:
-            prompt = f"""
+            if state.get("chat_history", []) else ""
+
+        prompt = f"""
              <|im_start|>system
              You are an experienced analyst that can use available information
              to provide accurate and concise feedback.
@@ -271,149 +265,145 @@ class GNQNA():
              Answer:
              <|im_end|>
              <|im_start|>assistant"""
+        async with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-            if not response or not isinstance(response, str) or \
-                    response.strip() == "": # Need valid generation
-                should_continue = "summarize" if iterations >= max_iterations \
-                    or result_count >= target else "retrieve"
-                response = ""  # Ensure a clean state
-            else:
-                should_continue = "check_relevance"
+        print(f"\nResponse in analyze: {response}")
+
+        should_continue = "check_relevance"
+
         return {"input": state["input"],
                 "answer": response,
                 "should_continue": should_continue,
                 "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "result_count": result_count,
-                "target": target,
-                "chat_history": state.get("chat_history", []),
-                "seen_documents": state.get("seen_documents", [])}
+                "chat_history": state.get("chat_history", [])}
 
-    
-    def summarize(self, state:State) -> dict:
-        # Define node for summarization
-        existing_history = state.get("chat_history", [])
-        current_interaction=f"""
-            User: {state["input"]}\nAssistant: {state["answer"]}"""
-        full_context = "\n".join(existing_history) + "\n" + \
-            current_interaction if existing_history else current_interaction
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 10)
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 10)
-        prompt = f"""
-            <|system|>
-            You are an excellent and concise summary maker.
-            <|end|>
-            <|user|>
-            Summarize in bullet points the conversation below.
-            Follow this format: input - answer
-            Conversation: {full_context}
-            <|end|>
-            <|assistant|>"""
-        summary = GENERATIVE_MODEL.invoke(prompt).strip() # central task
-        if not summary or not isinstance(summary, str) or summary.strip() == "":
-            summary = f"- {state['input']} - No valid answer generated"
-        should_continue="end" if result_count >= target or \
-            iterations >= max_iterations else "retrieve"
-        updated_history = existing_history + [summary] # update chat_history
-        print(f"\nChat history in summarize: {updated_history}")
-        return {"input": state["input"],
-                "answer": summary,
-                "should_continue": should_continue,
-                "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "result_count": result_count,
-                "target": target,
-                "chat_history": updated_history,
-                "seen_documents": state.get("seen_documents", [])}
+    async def check_relevance(self, state:State) -> dict:
 
-    def check_relevance(self, state:State) -> dict:
-        # Define node to check relevance of retrieved data
-        context = "\n".join(state.get("digested_context", []))
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 10)
-        iterations = state.get("iterations", 0) + 1 # Add one for each check
-        max_iterations = state.get("max_iterations", 10)
-        seen_documents = state.get("seen_documents", [])
+        # Check relevance of retrieved data
+        print("\nChecking relevance...")
+        
+        context = "\n".join(state.get("context", [])) \
+            if state.get("context", []) else ""
+
         prompt = f"""
-            <|system|>
+            <|im_start|>system
             You are an expert in evaluating data relevance. You do it seriously.
-            <|end|>
-            <|user|>
-            Assess if the provided answer is relevant to the query.
-            Return only yes or no. Nothing else.
+            <|im_end|>
+            <|im_start|>user
+            Assess if the provided answer is relevant to the query given context
+            Answer is relevant if the trait in query is also in the answer.
+            Return strictly your answer as yes or no. Do not add anything else.
+            Answer: The lodscore at Rs31201062 for traitBxd_18454 is 4.69
+            Query: What is the lodscore of traitBxd_18454 at locus Rs31201062?
+            Context: traitBxd_18454 has a lodScore of 4.69, a locus Rs31201062
+            <|im_end|>
+            <|im_start|>assistant
+            yes
+            <|im_end|>
+            <|im_start|>user
+            Assess if the provided answer is relevant to the query given context
+            Answer is relevant if trait in query figures in context and answer.
+            Return strictly your answer as yes or no. Do not add anything else.
             Answer: {state["answer"]}
             Query: {state["input"]}
             Context: {context}
-            <|end|>
-            <|assistant|>"""
-        assessment = GENERATIVE_MODEL.invoke(prompt).strip()
-        if assessment=="yes":
-            result_count = result_count + 1
-            should_continue = "summarize"
-        elif result_count >= target or iterations >= max_iterations:
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            assessment = GENERATIVE_MODEL.invoke(prompt)
+        print(f"\nAssessment in checking relevance: {assessment}")
+
+        if "yes" in assessment:
             should_continue = "summarize"
         else:
-            should_continue = "retrieve"
-            seen_documents.extend([doc.page_content for doc in \
-                state.get("context", [])])
+            should_continue = "end"
+            
         return {"input": state["input"],
                 "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
                 "answer": state["answer"],
-                "result_count": result_count,
-                "target": target,
-                "seen_documents": seen_documents,
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
-        
-    def route_manage(self, state: State) -> str:
-            should_continue = state.get("should_continue", "retrieve")
-            iterations = state.get("iterations", 0)
-            max_iterations = state.get("max_iterations", 10)
-            result_count = state.get("result_count", 0)
-            target = state.get("target", 10)
-            context = state.get("context", [])
-            digested_context = state.get("digested_context", [])
-            answer = state.get("answer", "")
-            # Validate state and enforce termination
-            if iterations >= max_iterations or result_count >= target:
-                return "summarize"
-            if should_continue not in ["retrieve", "naturalize", \
-                    "check_relevance", "analyze", "summarize"]:
-                return "summarize"  # Fallback to summarize
-            return should_continue
 
+    async def summarize(self, state:State) -> dict:
+
+        # Summarize
+        print("\nSummarizing")
+        
+        existing_history = state.get("chat_history", [])
+
+        current_interaction=f"""
+            User: {state["input"]}\nAssistant: {state["answer"]}"""
+
+        full_context = "\n".join(existing_history) + "\n" + \
+            current_interaction if existing_history else current_interaction
+
+        prompt = f"""
+            <|im_start|>system
+            You are an excellent and concise summary maker.
+            <|im_end|>
+            <|im_start|>user
+            Summarize in bullet points the conversation below.
+            Follow this format: input - answer
+            Conversation: {full_context}
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            summary = GENERATIVE_MODEL.invoke(prompt)
+
+        if not summary or not isinstance(summary, str) or summary.strip() == "":
+            summary = f"- {state['input']} - No valid answer generated"
+
+        updated_history = existing_history + [summary] # update chat_history
+        print(f"\nChat history in summarize: {updated_history}")
+
+        # Generate final answer
+        if not updated_history:
+            final_answer = "Insufficient data for analysis."
+        else:
+            prompt = f"""
+            <|system|>
+            You are an expert synthesizer. Compile the following summarized \
+            interactions into a single, well-structured paragraph that answers \
+            the original question coherently. \
+            Ensure the response is insightful, concise, and draws \
+            logical inferences where possible.
+            <|end|>
+            <|user|>
+            Original question: {state["input"]}
+            Summarized history: {updated_history}
+            Provide only the final paragraph, nothing else.
+            <|end|>
+            <|assistant|>"""
+            
+            async with self.summary_lock:
+                response = SUMMARY_MODEL.invoke(prompt)
+            print(f"Answer in summarize: {response}")
+
+            proc_answer = response if response else "Sorry, we are unable to \
+            provide a valuable feedback due to lack of relevant data."
+
+        return {"input": state["input"],
+                "answer": proc_answer,
+                "context": state.get("context", []),
+                "chat_history": updated_history}
+    
     def initialize_langgraph_chain(self) -> Any:
         graph_builder = StateGraph(State)
-        graph_builder.add_node("manage", self.manage)
         graph_builder.add_node("retrieve", self.retrieve)
-        graph_builder.add_node("naturalize", self.naturalize)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
         graph_builder.add_node("summarize", self.summarize)
-        graph_builder.add_edge(START, "manage")
-        graph_builder.add_edge("retrieve", "naturalize")
-        graph_builder.add_edge("naturalize", "analyze")
+        graph_builder.add_edge(START, "retrieve")
+        graph_builder.add_edge("retrieve", "analyze")
         graph_builder.add_edge("analyze", "check_relevance")
-        graph_builder.add_edge("check_relevance", "manage")
         graph_builder.add_edge("summarize", END)
         graph_builder.add_conditional_edges(
-            "manage",
-            self.route_manage,
-            {"retrieve": "retrieve",
-             "naturalize": "naturalize",
-             "check_relevance": "check_relevance",
-             "analyze": "analyze",
-             "summarize": "summarize"})
+            "check_relevance",
+            lambda state: state.get("should_continue", "summarize"),
+            {"summarize": "summarize",
+             "end": END})
         graph=graph_builder.compile()
+
         return graph
 
     async def invoke_langgraph(self, question: str) -> Any:
@@ -422,35 +412,127 @@ class GNQNA():
             "input": question,
             "chat_history": [],
             "context": [],
-            "digested_context": [],
-            "seen_documents": [],
             "answer": "",
-            "iterations": 0,
-            "result_count": 0,
-            "should_continue": "retrieve",
-            "target": 10,  # Explain magic number 10
-            "max_iterations": 10 # Explain magic number 10
-        }
+            "should_continue": "retrieve"}
+        
         result = await graph.ainvoke(initial_state) # Run graph asynchronously
+
         return result
 
+    async def split_query(self, query: str) -> list[str]:
+
+        print("\nSplitting query")
+        
+        prompt = f"""
+            <|im_start|>system
+            You are a query splitter.
+            Split the query into independent subqueries based on sentences.
+            If it's a single sentence, return a list with one item.
+            Return strictly a JSON list of strings, nothing else.
+            <|im_end|>
+            <|im_start|>user
+            Query: Identify traits with lod score > 4.0 at specific locus.
+            Compare lod scores per locus.
+            <|im_end|>
+            <|im_start|>assistant
+            ["Identify traits with lod score > 4.0 at specific locus", 
+            "Compare lod scores per locus"]
+            <|im_end|>
+            <|im_start|>user
+            Query: Collect lod scores on chromosome 1 and 2 for traits A and B.
+            Tell markers with similar lod scores.
+            <|im_end|>
+            <|im_start|>assistant
+            ["Collect lod scores on chromosome 1 and 2 for traits A and B", \
+            "Tell markers with similar lod scores"]
+            <|im_start|>user
+            Query: {query}
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
+        if isinstance(response, str):
+            start = response.find("[")
+            end = response.rfind("]") + 1
+            subqueries = json.loads(response[start:end])
+        else:
+            subqueries = [query]
+
+        return subqueries
+
+    async def finalize(self, query: str,
+                 subqueries: list[str],
+                 answers: list[str]) -> dict:
+
+        print("\nFinalizing")
+
+        prompt = f"""
+            <|im_start|>system
+            You are an expert synthesizer. Given the subqueries and \
+            corresponding answers, generate a comprehensive response to the \
+            query. Ensure the response is insightful, concise, and draws \
+            logical inferences where possible.
+            <|im_end|>
+            <|im_start|>user
+            Query: {query}
+            Subqueries: {subqueries}
+            Answers: {answers}
+            Provide only the overall response, nothing else.
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
+        print(f"Response in finalize: {response}")
+
+        final_answer = response if response else "Sorry, we are unable to \
+            provide an overall feedback due to lack of relevant data."
+
+        return final_answer
+
+    async def manage_subtasks(self, question: str) -> dict:
+
+        # Manage multiple calls or subqueries
+
+        subqueries = await self.split_query(question)
+        tasks = [self.invoke_langgraph(subquery) for subquery in subqueries]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        answers = []
+        for id, result in enumerate(results):
+            if isinstance(result, Exception):
+                answers.append(f"Error in subquery {subqueries[id]}: \
+                    {str(result)}")
+            else:
+                answers.append(result.get("answer", \
+                    "No answer generated for this subquery."))
+
+        concatenated_answer = await self.finalize(question, subqueries, answers)
+
+        return {"result": concatenated_answer,
+                "states": results}
     
-    def answer_question(self, question: str) -> Any:
+    async def answer_question(self, question: str) -> Any:
         start = time.time()
-        result = asyncio.run(self.invoke_langgraph(question))
+        result = await self.manage_subtasks(question)
         end = time.time()
         print(f'answer_question: {end-start}')
-        return {"result": result["chat_history"],
-                "state": result}
 
-agent = GNQNA(corpus_path=CORPUS_PATH,
-    db_path=DB_PATH)
+        return result
 
-#query = input('Please enter your query:')
+async def main():
+    agent = GNQNA(corpus_path=CORPUS_PATH,
+              pcorpus_path=PCORPUS_PATH,
+              db_path=DB_PATH)
 
-output = agent.answer_question('Extract lod scores and traits for the locus D12mit280. You are allowed to initiate many rounds of search retrieval until you reach the target. List only for me traits that have a lod score > 4.0. Show results using the following format: trait - lod score\n')
-print("\nFinal answer:", output["result"])
-print("\nCitations:", output["state"]["digested_context"])
+    #query = input('Please enter your query:')
 
-GENERATIVE_MODEL.client.close()
+    output = await agent.answer_question('Identify markers having a \
+        lod score > 4.0. Find the traits related to the markers. \
+        Confirm that the traits are for lod scores > 4.0.')
+    print("\nFinal answer:", output)
 
+    GENERATIVE_MODEL.client.close()
+    SUMMARY_MODEL.client.close()
+
+if __name__ == "__main__":
+    asyncio.run(main())
