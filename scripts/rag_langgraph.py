@@ -23,6 +23,8 @@ from langchain_community.vectorstores import Chroma
 
 from langgraph.graph import StateGraph, START, END
 import asyncio
+from threading import Lock
+from concurrent.futures import ThreadPoolExecutor
 
 from rdflib import Graph
 from glob import glob
@@ -77,12 +79,10 @@ class GNQNA():
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    generative_lock: asyncio.Lock = field(init=False, \
-        default_factory=asyncio.Lock)
-    summary_lock: asyncio.Lock = field(init=False, \
-        default_factory=asyncio.Lock)
-    retriever_lock: asyncio.Lock = field(init=False, \
-        default_factory=asyncio.Lock)
+    generative_lock: Lock = field(init=False, default_factory=Lock)
+    summary_lock: Lock = field(init=False, default_factory=Lock)
+    retriever_lock: Lock = field(init=False, default_factory=Lock)
+    
     def __post_init__(self):
 
         if not Path(self.pcorpus_path).exists():
@@ -102,10 +102,10 @@ class GNQNA():
 
         # Init'ing the ensemble retriever
         # Explain magic numbers and magic array
-        bm25_retriever = BM25Retriever.from_texts(self.docs, k=5)
+        bm25_retriever = BM25Retriever.from_texts(self.docs, k=10)
         self.ensemble_retriever=EnsembleRetriever(
-            retrievers = [self.chroma_db.as_retriever( \
-                search_kwargs={"k": 5}), bm25_retriever], weights=[0.4, 0.6])
+            retrievers = [self.chroma_db.as_retriever(
+                search_kwargs={"k": 10}), bm25_retriever], weights=[0.4, 0.6])
 
     def corpus_to_docs(self, corpus_path: str) -> list:
         print("In corpus_to_docs")
@@ -152,7 +152,8 @@ class GNQNA():
                 <|im_start|>end
                 <|im_start|>assistant"""
 
-            response = GENERATIVE_MODEL.invoke(prompt)
+            with self.generative_lock:
+                response = GENERATIVE_MODEL.invoke(prompt)
             #print(f"Documents: {response}")
 
             docs.append(response)
@@ -184,7 +185,7 @@ class GNQNA():
                     db.persist()
                 return db
 
-    async def retrieve(self, state: State) -> dict:
+    def retrieve(self, state: State) -> dict:
 
         # Retrieve documents
         print("\nRetrieving")
@@ -211,7 +212,7 @@ class GNQNA():
         <|im_end|>
         <|im_start|>assistant"""
 
-        async with self.generative_lock:
+        with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
         print(f"\nResponse in retrieve: {response}")
 
@@ -223,7 +224,7 @@ class GNQNA():
             response = []
         
         retrieved_docs = []
-        async with self.retriever_lock:
+        with self.retriever_lock:
             for query in response:
                 if query:
                     retrieved_docs.append(self.ensemble_retriever.invoke(query))
@@ -241,7 +242,7 @@ class GNQNA():
                 "chat_history": state.get("chat_history", []),
                 "answer": state.get("answer", "")}
 
-    async def analyze(self, state:State) -> dict:
+    def analyze(self, state:State) -> dict:
 
         # Analyze documents
         print("\nAnalysing")
@@ -254,9 +255,10 @@ class GNQNA():
 
         prompt = f"""
              <|im_start|>system
-             You are an experienced analyst that can use available information
-             to provide accurate and concise feedback.
+             You are an experienced data analyst who provides accurate and\
+             concise feedback.
              Answer the question below using provided information.
+             Give your response in 100 words max and quickly.
              <|im_end|>
              <|im_start|>user
              Context:
@@ -269,7 +271,7 @@ class GNQNA():
              Answer:
              <|im_end|>
              <|im_start|>assistant
-             Trait A and B have a lod score of 2.9 and 3.5 respectively at
+             Trait A and B have a lod score of 2.9 and 3.5 respectively at\
              Rsm1001.
              <|im_start|>user
              Context:
@@ -281,7 +283,8 @@ class GNQNA():
              Answer:
              <|im_end|>
              <|im_start|>assistant"""
-        async with self.generative_lock:
+
+        with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
         print(f"\nResponse in analyze: {response}")
 
@@ -293,7 +296,7 @@ class GNQNA():
                 "context": state.get("context", []),
                 "chat_history": state.get("chat_history", [])}
 
-    async def check_relevance(self, state:State) -> dict:
+    def check_relevance(self, state:State) -> dict:
 
         # Check relevance of retrieved data
         print("\nChecking relevance...")
@@ -302,23 +305,24 @@ class GNQNA():
             if state.get("context", []) else ""
 
         prompt = f"""
-            <|im_start|>system
+            <|system|>
             You are an expert in evaluating data relevance. You do it seriously.
             Assess if provided answer is relevant to the query given context.
             Return strictly your answer as yes or no. Do not add anything else.
-            <|im_end|>
-            <|im_start|>user
+            <|end|>
+            <|user|>
             Answer:
             The lodscore at Rs31201062 for traitBxd_18454 is 4.69
             Query:
             What is the lodscore of traitBxd_18454 at locus Rs31201062?
-            Context: traitBxd_18454 has a lodScore of 4.69, a locus Rs31201062
+            Context:
+            TraitBxd_18454 has a lodScore of 4.69 at locus Rs31201062
             Decision:
-            <|im_end|>
-            <|im_start|>assistant
+            <|end|>
+            <|assistant|>
             yes
-            <|im_end|>
-            <|im_start|>user
+            <|end|>
+            <|user|>
             Answer:
             {state["answer"]}
             Query:
@@ -326,10 +330,11 @@ class GNQNA():
             Context:
             {context}
             Decision:
-            <|im_end|>
-            <|im_start|>assistant"""
-        async with self.generative_lock:
-            assessment = GENERATIVE_MODEL.invoke(prompt)
+            <|end|>
+            <|assistant|>"""
+
+        with self.summary_lock:
+            assessment = SUMMARY_MODEL.invoke(prompt)
         print(f"\nAssessment in checking relevance: {assessment}")
 
         if "yes" in assessment.lower():
@@ -343,7 +348,7 @@ class GNQNA():
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
 
-    async def summarize(self, state:State) -> dict:
+    def summarize(self, state:State) -> dict:
 
         # Summarize
         print("\nSummarizing")
@@ -357,27 +362,31 @@ class GNQNA():
             current_interaction if existing_history else current_interaction
 
         prompt = f"""
-            <|im_start|>system
+            <|system|>
             You are an excellent and concise summary maker.
             Summarize in bullet points the conversation below.
-            <|im_end|>
-            <|im_start|>user
+            Give your response in 100 words max and quickly.
+            <|end|>
+            <|user|>
             Conversation:
             Trait A has a lod score of 4.7 at marker Rs71192.
             Trait B has a lod score of 1.9 at marker Rs71192.
             Those 2 traits are related to an immune disease.
             Summary:
-            <|im_start|>assistant
-            Two traits involved in diabetes have a lod score of 1.9 and 4.7 at
+            <|end|>
+            <|assistant|>
+            Two traits involved in diabetes have a lod score of 1.9 and 4.7 at\
             Rs71192.
-            <|im_start|>user
+            <|end|>
+            <|user|>
             Conversation:
             {full_context}:
             Summary:
-            <|im_end|>
-            <|im_start|>assistant"""
-        async with self.generative_lock:
-            summary = GENERATIVE_MODEL.invoke(prompt)
+            <|end|>
+            <|assistant|>"""
+
+        with self.summary_lock:
+            summary = SUMMARY_MODEL.invoke(prompt)
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
@@ -390,37 +399,38 @@ class GNQNA():
             final_answer = "Insufficient data for analysis."
         else:
             prompt = f"""
-            <|system|>
-            You are an expert synthesizer. Compile the following summarized
-            interactions into a single, well-structured paragraph that answers
+            <|im_start|>system
+            You are an expert synthesizer. Compile the following summarized\
+            interactions into a single, well-structured paragraph that answers\
             the original question coherently.
-            Ensure the response is insightful, concise, and draws
+            Ensure the response is insightful, concise, and draws\
             logical inferences where possible.
             Provide only the final paragraph, nothing else.
-            <|end|>
-            <|user|>
+            Give your response in 75 words max and quickly.
+            <|im_end|>
+            <|im_start|>user
             Original question:
             Take traits and B and compare their lod scores at Rs71192
             Summarized history:
-            Traits A and B involved in diabetes have a lod score of
+            Traits A and B involved in diabetes have a lod score of\
             1.9 and 4.7 at Rs71192.
             Conclusion:
-            <|end|>
-            <|assistant|>
-            The lod score at Rs71192 for trait A (1.9) is less than
+            <|im_end|>
+            <|im_start|>assistant
+            The lod score at Rs71192 for trait A (1.9) is less than\
             for trait B (4.7).
-            <|end|>
-            <|user|>
+            <|im_end|>
+            <|im_start|>user
             Original question:
             {state["input"]}
             Summarized history:
             {updated_history}
             Conclusion:
-            <|end|>
-            <|assistant|>"""
-            
-            async with self.summary_lock:
-                response = SUMMARY_MODEL.invoke(prompt)
+            <|im_end|>
+            <|im_start|>assistant"""
+
+            with self.generative_lock:
+                response = GENERATIVE_MODEL.invoke(prompt)
             print(f"Answer in summarize: {response}")
 
             proc_answer = response if response else "Sorry, we are unable to \
@@ -459,11 +469,11 @@ class GNQNA():
             "answer": "",
             "should_continue": "retrieve"}
         
-        result = await graph.ainvoke(initial_state) # Run graph asynchronously
+        result = await graph.ainvoke(initial_state)
 
         return result
 
-    async def split_query(self, query: str) -> list[str]:
+    def split_query(self, query: str) -> list[str]:
 
         print("\nSplitting query")
         
@@ -481,7 +491,7 @@ class GNQNA():
             Result:
             <|im_end|>
             <|im_start|>assistant
-            ["Identify traits with lod score > 4.0 at specific locus", 
+            ["Identify traits with lod score > 4.0 at specific locus", \
             "Compare lod scores per locus"]
             <|im_end|>
             <|im_start|>user
@@ -499,9 +509,11 @@ class GNQNA():
             Result:
             <|im_end|>
             <|im_start|>assistant"""
-        
-        async with self.generative_lock:
+
+        with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
+        print(f"Subqueries in split_query: {response}")
+        
         if isinstance(response, str):
             start = response.find("[")
             end = response.rfind("]") + 1
@@ -511,7 +523,7 @@ class GNQNA():
 
         return subqueries
 
-    async def finalize(self, query: str,
+    def finalize(self, query: str,
                  subqueries: list[str],
                  answers: list[str]) -> dict:
 
@@ -519,11 +531,12 @@ class GNQNA():
 
         prompt = f"""
             <|im_start|>system
-            You are an expert synthesizer. Given the subqueries and
-            corresponding answers, generate a comprehensive response to the
-            query. Ensure the response is insightful, concise, and draws 
+            You are an expert synthesizer. Given the subqueries and\
+            corresponding answers, generate a comprehensive response to the\
+            query. Ensure the response is insightful, concise, and draws\
             logical inferences where possible.
             Provide only the overall response, nothing else.
+            Use only 100 words max.
             <|im_end|>
             <|im_start|>user
             Query:
@@ -533,7 +546,7 @@ class GNQNA():
             ["Identify two traits related to diabetes",
             "Compare lod scores of same traits at Rsm149505"]
             Answers:
-            ["Traits A and B are related to diabetes",
+            ["Traits A and B are related to diabetes", \
             "The lod score at Rsm149505 is 2.3 and 3.4 for trait A and B"]
             Conclusion:
             <|im_end|>
@@ -551,7 +564,8 @@ class GNQNA():
             Conclusion:
             <|im_end|>
             <|im_start|>assistant"""
-        async with self.generative_lock:
+
+        with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
         print(f"Response in finalize: {response}")
 
@@ -560,14 +574,20 @@ class GNQNA():
 
         return final_answer
 
-    async def manage_subtasks(self, question: str) -> dict:
+    def run_subtask(self, subquery: str) -> dict:
+        # Run specific task
+        result = asyncio.run(self.invoke_langgraph(subquery))
+        return result
 
+    def manage_subtasks(self, question: str) -> dict:
+        
         # Manage multiple calls or subqueries
 
-        subqueries = await self.split_query(question)
-        tasks = [self.invoke_langgraph(subquery) for subquery in subqueries]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
+        subqueries = self.split_query(question)
+        
+        with ThreadPoolExecutor(max_workers=len(subqueries)) as worker:
+            results = list(worker.map(self.run_subtask, subqueries))
+            
         answers = []
         for id, result in enumerate(results):
             if isinstance(result, Exception):
@@ -577,14 +597,14 @@ class GNQNA():
                 answers.append(result.get("answer", \
                     "No answer generated for this subquery."))
 
-        concatenated_answer = await self.finalize(question, subqueries, answers)
+        concatenated_answer = self.finalize(question, subqueries, answers)
 
         return {"result": concatenated_answer,
                 "states": results}
     
     async def answer_question(self, question: str) -> Any:
         start = time.time()
-        result = await self.manage_subtasks(question)
+        result = self.manage_subtasks(question)
         end = time.time()
         print(f'answer_question: {end-start}')
 
@@ -597,10 +617,10 @@ async def main():
 
     #query = input('Please enter your query:')
 
-    output = await agent.answer_question('Identify markers having a \
+    output = await agent.answer_question("Identify markers having a \
         lod score > 4.0. Find the traits related to the markers. \
-        Confirm that the traits are for lod scores > 4.0.')
-    print("\nFinal answer:", output)
+        Confirm that the traits are for lod scores > 4.0.")
+    print("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
     SUMMARY_MODEL.client.close()
