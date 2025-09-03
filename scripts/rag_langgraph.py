@@ -301,13 +301,10 @@ class GNQNA():
         # Check relevance of retrieved data
         print("\nChecking relevance...")
         
-        context = "\n".join(state.get("context", [])) \
-            if state.get("context", []) else ""
-
         prompt = f"""
             <|system|>
             You are an expert in evaluating data relevance. You do it seriously.
-            Assess if provided answer is relevant to the query given context.
+            Assess if provided answer is relevant to the query.
             Return strictly your answer as yes or no. Do not add anything else.
             <|end|>
             <|user|>
@@ -315,8 +312,6 @@ class GNQNA():
             The lodscore at Rs31201062 for traitBxd_18454 is 4.69
             Query:
             What is the lodscore of traitBxd_18454 at locus Rs31201062?
-            Context:
-            TraitBxd_18454 has a lodScore of 4.69 at locus Rs31201062
             Decision:
             <|end|>
             <|assistant|>
@@ -327,8 +322,6 @@ class GNQNA():
             {state["answer"]}
             Query:
             {state["input"]}
-            Context:
-            {context}
             Decision:
             <|end|>
             <|assistant|>"""
@@ -617,9 +610,9 @@ async def main():
 
     #query = input('Please enter your query:')
 
-    output = await agent.answer_question("Identify markers having a \
-        lod score > 4.0. Find the traits related to the markers. \
-        Confirm that the traits are for lod scores > 4.0.")
+    output = await agent.answer_question("Extract traits and markers having a \
+        lod score > 4.0 from the database. Use trait descriptions to \
+        explain biology.")
     print("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
