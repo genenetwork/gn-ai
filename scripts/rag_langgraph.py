@@ -524,11 +524,11 @@ class GNQNA():
 
         prompt = f"""
             <|im_start|>system
-            You are an expert synthesizer. Given the subqueries and\
-            corresponding answers, generate a comprehensive response to the\
-            query. Ensure the response is insightful, concise, and draws\
-            logical inferences where possible.
-            Provide only the overall response, nothing else.
+            You are an experienced biology scientist. Given the subqueries and\
+            corresponding answers, generate a comprehensive explanation to\
+            address the query using all information provided. Ensure the\
+            response is insightful, concise, and draws logical inferences \
+            where possible. Provide only the story, nothing else.
             Use only 100 words max.
             <|im_end|>
             <|im_start|>user
@@ -544,8 +544,9 @@ class GNQNA():
             Conclusion:
             <|im_end|>
             <|im_start|>assistant
-            Traits A and B are related to diabetes and have a lod score of
-            2.3 and 3.4 at Rsm149505.
+            Traits A and B are related to diabetes and have a lod score of\
+            2.3 and 3.4 at Rsm149505. The two traits could interact via a\
+            gene close to the marker Rsm149505.
             <|im_end|>
             <|im_start|>user
             Query:
@@ -610,9 +611,8 @@ async def main():
 
     #query = input('Please enter your query:')
 
-    output = await agent.answer_question("Extract traits and markers having a \
-        lod score > 4.0 from the database. Use trait descriptions to \
-        explain biology.")
+    output = await agent.answer_question("Knowing that traits have long code\
+    and markers short code, identify traits and markers with a lod score > 4.0.\    Tell me what traits are involved in biology.")
     print("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
