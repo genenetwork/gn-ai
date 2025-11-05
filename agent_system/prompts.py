@@ -1,3 +1,5 @@
+# This module instantiates all prompts
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 naturalize_prompt = {
@@ -10,9 +12,28 @@ naturalize_prompt = {
         HumanMessage(
             """
             Take this new RDF data and make it sound like Plain English.
-            Use the subject, predicate and object to build sentences. You can later link sentences to form paragraphs.
-            You should return a coherent paragraph.
+            If you could chop long names to only meaningful parts, that would great. Remember the focus is on traits and genomic markers.
+            You should return a coherent sentence.
             New RDF data: {text}
+            Result:"""
+        ),
+    ]
+}
+
+rephrase_prompt = {
+    "messages": [
+        SystemMessage(
+            """
+            You are a skilled query reformulator for optimal document retrieval.
+            """
+        ),
+        HumanMessage(
+            """
+            Using chat history, reformulate this query to make it relevant. If a trait, marker or entity is referred to in the query, make sure to pick it from the previous query in your memory.
+            If the trait, marker or entity is new, do not reformulate.
+            You should return only the reformulated query that will be handled independently.
+            Query: {input}
+            Chat history: {existing_history}
             Result:"""
         ),
     ]
@@ -104,15 +125,14 @@ split_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an expert in genetics. You generate independent subqueries in genetics for parallel processing.
-            The goal is to have subquestions that do not have any implicit relationships so that they can be processed separately.
-            Return only the subquestions.
-            Return strictly a JSON list of strings, nothing else."""
+            You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand.
+            Split this task and do not make any assumptions (very important). If the task has multiple sentences, you must split. Return only the subtasks. Return strictly a JSON list of strings, nothing else.
+            If the task has only one sentence, you should return a singleton list of only the revised version of the task."""
         ),
         HumanMessage(
             """
-            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make fully sense alone. If a marker or trait is shared between the subqueries, make sure to mention it explicitly in each subquery. There should be no words such as "this", "that" or "those" in the subqueries.
-            Query:
+            Split the task into new subtasks. Make sure the subtasks make fully sense alone. If a marker or trait is shared between the subquestions, make sure to mention it explicitly in each subquery. There should be no word such as "this", "that" or "those" in the subqueries.
+            Task:
             {query}
             Result:"""
         ),
@@ -123,11 +143,10 @@ finalize_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an experienced geneticist. 
-            Ensure the response is insightful, concise, and draws logical inferences where possible.
+            You are an experienced geneticist. You can come up with an elaborated response to a query.
+            Ensure the response is accurate, insightful and concise. The response should be deeply thought.
+            Do not omit or substitute an important information.
             Do not modify entities names such as trait and marker.            
-            Make sure to link based on what is common in the answers.
-            Provide only the story, nothing else.
             Do not repeat answers. Use only 200 words max."""
         ),
         HumanMessage(
@@ -146,23 +165,22 @@ finalize_prompt = {
 
 sup_system_prompt1 = SystemMessage(
     """
-            You are a supervisor for a genomic analysis. You tasked with managing a conversation between the following workers: [researcher, planner, reflector]. Given the following user request, respond with the worker to act next. Each worker will perform a
-task and respond with their results. When finished, respond with end. """
+            You are a supervisor for a genomic analysis. You tasked with managing a conversation between the following workers: [researcher, reflector]. Given the following user request, respond with the worker to act next. Each worker will perform a task and respond with their results.
+            Follow the plan made by the planner to decide the next node. Make sure to reflect in between. Any feedback from the reflector must be acted upon using the researcher. Do not finish before completing the plan. When finished, respond with end."""
 )
 
 sup_system_prompt2 = SystemMessage(
     """
-            Given the conversation above, who should act next? Or should we end? Select one of: [researcher, planner, reflector, end]. You must help in making progress for solving the task. Look at the history of steps taken so far below. Make sure to not repeat the same step consecutively."""
+            Given the conversation above, who should act next? Or should we end? Select one of: [researcher, reflector, end]. You must help in making progress towards executing the plan. Look at the messages. Do not repeat the same step consecutively."""
 )
 
 plan_system_prompt = SystemMessage(
     """
-            You are an experienced and powerful task planner for genomic analysis. Generate a list of steps to take to solve the query below. You have access to a biological researcher who can dive deep and extract any type of information you need. You also have a reflector who can critique and ensure improvements. Make sure to always use it once before responding back to the user. The feedback from the reflector needs to be acted upon by the researcher before final delivery.
-            If the user provides critique, respond with a revised version of your previous attempts."""
+            You are an experienced and powerful task planner for genomic analysis. Generate a list of steps to take to solve the query below. You have access to a biological researcher who can dive deep and extract any type of information you need. You also have a reflector who can provide critique and make results better."""
 )
 
 refl_system_prompt = SystemMessage(
     """
-            You are a great science teacher. You have taught for almost 50 years and have a very deep knowledge of biology, genomics and bioinformatics. Generate critique and recommendations for the user's submission.
-            Provide detailed recommendations to improve quality, clarity, relevance and satisfaction of peers in your field."""
+            You are a great science teacher. You have taught for almost 50 years and have a very deep knowledge of biology, genomics and bioinformatics. You always have relevant follow questions. Improve the user's submission by providing follow up questions.
+            Provide alternative questions to address in order to improve quality, clarity, relevance, completeness and satisfaction of peers in your field."""
 )
