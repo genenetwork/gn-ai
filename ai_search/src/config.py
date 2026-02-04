@@ -5,6 +5,8 @@ It also provides different constructs to interact with the LLM
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
+import os
+
 import dspy
 import torch
 

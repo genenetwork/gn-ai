@@ -17,8 +17,6 @@ from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
-from langchain_core.documents import Document
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from tqdm import tqdm
 
 from config import *
@@ -34,9 +32,7 @@ class AISearch:
     Executes operations:
          Document processing
          Document embedding and database creation
-         Initialization of multi-agent graph
-         Initialization of subagent graph for researcher agent
-         Run of query through system
+         Run of query
     """
 
     corpus_path: str
