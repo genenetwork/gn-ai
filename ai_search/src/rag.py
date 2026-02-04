@@ -76,14 +76,11 @@ class AISearch:
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.db.as_retriever(
-                    search_kwargs={"k": 10}
-                ),  # might need finetuning
+                self.db.as_retriever(search_kwargs={"k": 10}),  # might need finetuning
                 bm25_retriever,
             ],
             weights=[0.5, 0.5],  # might need finetuning
         )
-
 
     def corpus_to_docs(
         self,
@@ -203,7 +200,6 @@ class AISearch:
             return response.get("answer")
 
 
-
 def main(query: str) -> str:
     search_task = AISearch(
         corpus_path=CORPUS_PATH,
@@ -212,6 +208,7 @@ def main(query: str) -> str:
     )
     output = search_task.answer(query)
     return output
+
 
 if __name__ == "__main__":
     print(main(QUERY))

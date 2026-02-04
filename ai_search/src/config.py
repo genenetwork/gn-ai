@@ -5,10 +5,8 @@ It also provides different constructs to interact with the LLM
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
-
 import dspy
 import torch
-
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -30,8 +28,7 @@ if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
 MODEL_NAME = os.getenv("MODEL_NAME")
 if MODEL_NAME is None:
-    raise ValueError("MODEL_NAME must be specified - either proprietary or local"
-    )
+    raise ValueError("MODEL_NAME must be specified - either proprietary or local")
 MODEL_TYPE = os.getenv("MODEL_TYPE")
 if MODEL_TYPE is None:
     raise ValueError("MODEL_TYPE must be specified")
@@ -42,7 +39,7 @@ torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-    
+
 if int(MODEL_TYPE) == 0:
     llm = dspy.LM(
         model=f"openai/{MODEL_NAME}",
@@ -72,9 +69,11 @@ else:
 
 dspy.configure(lm=llm)
 
+
 class Generate(dspy.Signature):
     context: list = dspy.InputField()
     input_text: str = dspy.InputField()
     answer: str = dspy.OutputField()
+
 
 generate = dspy.Predict(Generate)
