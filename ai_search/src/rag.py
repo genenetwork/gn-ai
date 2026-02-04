@@ -42,7 +42,6 @@ class AISearch:
     ensemble_retriever: Any = field(init=False)
 
     def __post_init__(self):
-
         # Process or load documents
         if not Path(self.pcorpus_path).exists():  # first time readout of corpus
             self.docs = self.corpus_to_docs(self.corpus_path)
@@ -159,14 +158,14 @@ class AISearch:
             db.persist()
             return db
 
-        def answer(question: str) -> str:
-            retrieved_docs = self.ensemble_retriever.invoke(question)
-            system_prompt = """
+    def handle(self, query: str) -> str:
+        retrieved_docs = self.ensemble_retriever.invoke(query)
+        system_prompt = """
             You are an expert in biology and genomics. You excel at leveraging the data or context you have been given to address any user query.
             Give an accurate and elaborate response to the query below.
             In addition, provide links that the users can visit to verify information or dig deeper. To build link you must replace RDF prefixes by namespaces.
 
-            Below is the mapping of prefixes and namespaces:
+            Here is the mapping of prefixes and namespaces:
             gn => http://rdf.genenetwork.org/v1/id
             gnc => http://rdf.genenetwork.org/v1/category
             owl => http://www.w3.org/2002/07/owl
@@ -186,14 +185,15 @@ class AISearch:
             foaf => http://xmlns.com/foaf/0.1
             geoSeries => http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc
 
-            Do not make any mistakes.
+            Do not make any mistakes.\n
             """
 
-            response = generate(
-                input_text=system_prompt,
-                context=retrieved_docs,
-            )
-            return response.get("answer")
+        final_prompt = system_prompt + query
+        response = generate(
+            input_text=final_prompt,
+            context=retrieved_docs,
+        )
+        return response.get("answer")
 
 
 def main(query: str) -> str:
@@ -202,7 +202,7 @@ def main(query: str) -> str:
         pcorpus_path=PCORPUS_PATH,
         db_path=DB_PATH,
     )
-    output = search_task.answer(query)
+    output = search_task.handle(query)
     return output
 
 
