@@ -10,17 +10,15 @@ import asyncio
 import json
 import logging
 import os
-import sys
 import time
 import uuid
-
+import warnings
 from concurrent.futures import ThreadPoolExecutor
-from copy import deepcopy
 from dataclasses import dataclass, field
-from glob import glob
 from pathlib import Path
 from typing import Any, Literal
 
+from chromadb.config import Settings
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
@@ -30,14 +28,22 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, System
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from langgraph.prebuilt import ToolNode, tools_condition
 from pydantic import BaseModel
-from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
 
 from gnagent.config import *
 from gnagent.prompts import *
-from gnagent.query import query
+
+warnings.filterwarnings("ignore")
+
+logging.basicConfig(
+    filename="log_agent.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+)
 
 
 class AgentState(BaseModel):
@@ -47,16 +53,16 @@ class AgentState(BaseModel):
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
-    next: Literal["researcher", "planner", "reflector", "end"]
+    next_decision: Literal["researcher", "planner", "reflector", "expert", "end"]
 
 
-class SubagentState(TypedDict):
+class ResearcherState(TypedDict):
     """
-    Represents state of subcomponents of the agent researcher
+    Represents state of the agent researcher
     Avails 05 attributes to allow communication between its subcomponents
     """
 
-    input: str
+    input_text: str
     chat_history: list[str]
     context: list[str]
     answer: str
@@ -69,10 +75,9 @@ class GNAgent:
     Represents GeneNetwork Agent
     Encapsulates all functionalities of the system
     Takes:
-         Paths of corpuses and database
+         Paths of corpuses and databases
          All actors prompts
          Default parameters:
-             chat_id: identifier of conversation thread
              max_global_visits: maximum number of redirections allowed to prevent infinite looping
     Executes operations:
          Document processing (including naturalization) if not yet done
@@ -85,6 +90,7 @@ class GNAgent:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    ext_db_path: str
     naturalize_prompt: Any
     rephrase_prompt: Any
     analyze_prompt: Any
@@ -93,32 +99,34 @@ class GNAgent:
     synthesize_prompt: Any
     split_prompt: Any
     finalize_prompt: Any
-    sup_system_prompt1: Any
-    sup_system_prompt2: Any
-    plan_system_prompt: Any
-    refl_system_prompt: Any
-    chat_id: str = "default"
-    max_global_visits: int = 5
-    chroma_db: Any = field(init=False)
+    sup_prompt1: Any
+    sup_prompt2: Any
+    plan_prompt: Any
+    refl_prompt: Any
+    expert_prompt: Any
+    max_global_visits: int = 10
+    int_db: Any = field(init=False)
+    ext_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    memory : Any = field(init=False)
-    subgraph: Any = field(init=False)
+    ext_retriever: Any = field(init=False)
+    memory: Any = field(init=False)
+    resgraph: Any = field(init=False)
 
     def __post_init__(self):
 
         # Process or load documents
-        if not Path(self.pcorpus_path).exists():  # first time execution
+        if not Path(self.pcorpus_path).exists():  # first time readout of corpus
             self.docs = self.corpus_to_docs(self.corpus_path)
             with open(self.pcorpus_path, "w") as file:
                 file.write(json.dumps(self.docs))
-        else:  # subsequent executions
+        else:
             with open(self.pcorpus_path) as file:
                 data = file.read()
                 self.docs = json.loads(data)
 
         # Create or get embedding database
-        self.chroma_db = self.set_chroma_db(
+        self.int_db = self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
@@ -136,16 +144,32 @@ class GNAgent:
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.chroma_db.as_retriever(
+                self.int_db.as_retriever(
                     search_kwargs={"k": 10}
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.3, 0.7],  # might need finetuning
+            weights=[0.7, 0.3],  # might need finetuning
             c=30,
         )
+
+        # Avail retriever leveraging external database (NCBI) and model
+        self.ext_db = Chroma(
+            persist_directory=self.ext_db_path,
+            embedding_function=HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL,
+                model_kwargs={"trust_remote_code": True, "device": "cpu"},
+            ),
+            client_settings=Settings(
+                is_persistent=True,
+                persist_directory=self.ext_db_path,
+                anonymized_telemetry=False,
+            ),
+        )
+        self.ext_retriever = self.ext_db.as_retriever(search_kwargs={"k": 3})
+
         self.memory = MemorySaver()
-        self.subgraph = self.initialize_subgraph()
+        self.resgraph = self.initialize_resgraph()
 
     def corpus_to_docs(
         self,
@@ -166,7 +190,7 @@ class GNAgent:
         logging.info("In corpus_to_docs")
 
         if not Path(corpus_path).exists():
-            sys.exit(1)
+            raise ValueError("corpus_path is not a valid path")
 
         # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
@@ -187,13 +211,10 @@ class GNAgent:
             return chunks
 
         prompts = []
-        last_content = deepcopy(self.naturalize_prompt)["messages"][-1].content
         for i in range(0, len(chunks) + 1, chunk_size):
             chunk = chunks[i : i + chunk_size]
             text = "".join(chunk)
-            formatted = last_content.format(text=text)
-            prompt = deepcopy(self.naturalize_prompt)
-            prompt["messages"] = prompt["messages"][:-1] + [HumanMessage(formatted)]
+            prompt = [self.naturalize_prompt.copy(), HumanMessage(text)]
             prompts.append(prompt)
 
         def naturalize(data: str) -> str:
@@ -206,7 +227,7 @@ class GNAgent:
                 logic text capturing RDF meaning
             """
 
-            response = generate(question=data)
+            response = naturalize_pred(input_text=data)
             return response.get("answer")
 
         with ThreadPoolExecutor(max_workers=100) as ex:  # Explain magic number
@@ -235,13 +256,24 @@ class GNAgent:
 
         logging.info("In set_chroma_db")
 
+        settings = Settings(
+            is_persistent=True,
+            persist_directory=db_path,
+            anonymized_telemetry=False,
+        )
+
         if Path(db_path).exists():
-            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            db = Chroma(
+                persist_directory=db_path,
+                embedding_function=embed_model,
+                client_settings=settings,
+            )
             return db
         else:
             db = Chroma(
-                embedding_function=embed_model,
                 persist_directory=db_path,
+                embedding_function=embed_model,
+                client_settings=settings,
             )
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
@@ -257,16 +289,16 @@ class GNAgent:
             db.persist()
             return db
 
-    def rephrase(self, state: SubagentState) -> dict:
-        """Rephrases a query to use information in memory
+    def rephrase(self, state: ResearcherState) -> dict:
+        """Rephrases a query to use information in memory inside researcher
 
         Args:
-            state: node state
+            state: researcher state
 
         Returns:
-            node state updated with memory
+            researcher state updated with memory
         """
-        
+
         logging.info("Rephrasing")
 
         existing_history = (
@@ -274,18 +306,13 @@ class GNAgent:
             if state.get("chat_history", [])
             else "No prior conversation."
         )
-        
-        rephrase_prompt = self.rephrase_prompt.copy()
-        last_content = rephrase_prompt["messages"][-1].content
-        formatted = last_content.format(
-            input=state["input"],
-            existing_history=existing_history,
+
+        rephrase_prompt = [self.rephrase_prompt, HumanMessage(state["input_text"])]
+
+        response = rephrase_pred(
+            input_text=rephrase_prompt,
+            existing_history=[HumanMessage(existing_history)],
         )
-        rephrase_prompt["messages"] = self.rephrase_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
-        ]
-        
-        response = generate(question=rephrase_prompt)
 
         logging.info(f"Response in rephrase: {response}")
 
@@ -293,49 +320,53 @@ class GNAgent:
         should_continue = "retrieve"
 
         return {
-            "input": response,
+            "input_text": response,
             "answer": state.get("answer", ""),
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
             "context": state.get("context", []),
         }
 
-    def retrieve(self, state: SubagentState) -> dict:
-        """Retrieves relevant documents to a query
+    def retrieve(self, state: ResearcherState) -> dict:
+        """Retrieves relevant documents to a query in researcher
 
         Args:
-            state: node state
+            state: researcher state
 
         Returns:
-            node state updated with retrieved documents
+            researcher state updated with retrieved documents
         """
 
         logging.info("Retrieving")
 
-        logging.info(f"Input in retriever: {state['input']}")
+        logging.info(f"Input in retriever: {state['input_text']}")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get("context", [])
+        retrieved_docs = (
+            self.ensemble_retriever.invoke(state["input_text"])
+            + self.ext_retriever.invoke(state["input_text"])
+            + state.get("context", [])
+        )
 
-        logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
+        # logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
         should_continue = "analyze"
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "context": retrieved_docs,
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
             "answer": state.get("answer", ""),
         }
 
-    def analyze(self, state: SubagentState) -> dict:
-        """Addresses a query based on retrieved documents
+    def analyze(self, state: ResearcherState) -> dict:
+        """Addresses a query based on retrieved documents in researcher
 
         Args:
-            state: node state
+            state: researcher state
 
         Returns:
-            node state updated with answer
+            researcher state updated with answer
         """
 
         logging.info("Analysing")
@@ -356,17 +387,13 @@ class GNAgent:
             else ""
         )
 
-        analyze_prompt = self.analyze_prompt.copy()
-        last_content = analyze_prompt["messages"][-1].content
-        formatted = last_content.format(
-            context=truncated_context,
-            existing_history=existing_history,
-            input=state["input"],
+        analyze_prompt = [self.analyze_prompt, HumanMessage(state["input_text"])]
+
+        response = analyze_pred(
+            input_text=analyze_prompt,
+            context=[HumanMessage(truncated_context)],
+            existing_history=[HumanMessage(existing_history)],
         )
-        analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
-        ]
-        response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
 
@@ -374,37 +401,33 @@ class GNAgent:
         should_continue = "check_relevance"
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "answer": response,
             "should_continue": should_continue,
             "context": state.get("context", []),
             "chat_history": state.get("chat_history", []),
         }
 
-    def check_relevance(self, state: SubagentState) -> dict:
-        """Checks relevance of answer to query
+    def check_relevance(self, state: ResearcherState) -> dict:
+        """Checks relevance of answer to query in researcher
 
         Args:
-            state: node state
+            state: researcher state
 
         Returns:
-            node state updated with relevance status
+            researcher state updated with relevance status
         """
 
         logging.info("Checking relevance")
 
         answer = state["answer"]
 
-        check_prompt = self.check_prompt.copy()
-        last_content = check_prompt["messages"][-1].content
-        formatted = last_content.format(answer=answer, input=state["input"])
-        check_prompt["messages"] = self.check_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
-        ]
-        assessment = generate(question=check_prompt)
+        check_prompt = [self.check_prompt, HumanMessage(state["input_text"])]
+
+        assessment = check_pred(input_text=check_prompt, answer=[HumanMessage(answer)])
         logging.info(f"Assessment in checking relevance: {assessment}")
 
-        if "yes" in assessment.get("answer").lower():
+        if assessment.get("decision") == "yes":
             should_continue = "summarize"
         else:
             should_continue = "end"
@@ -412,39 +435,38 @@ class GNAgent:
                 provide a valuable feedback due to lack of relevant data."
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "context": state.get("context", []),
             "answer": answer,
             "chat_history": state.get("chat_history", []),
             "should_continue": should_continue,
         }
 
-    def summarize(self, state: SubagentState) -> dict:
-        """Summarizes data in node
+    def summarize(self, state: ResearcherState) -> dict:
+        """Summarizes data in researcher
 
         Args:
-            state: node state
+            state: researcher state
 
         Returns:
-            summarized answer
+            researcher state updated with summarized answer
         """
 
         logging.info("Summarizing")
 
         current_interaction = f"""
-            User: {state["input"]}\nAssistant: {state["answer"]}"""
+            User: {state["input_text"]}\nAssistant: {state["answer"]}"""
 
-        summarize_prompt = self.summarize_prompt.copy()
-        last_content = summarize_prompt["messages"][-1].content
-        formatted = last_content.format(full_context=current_interaction)
-        summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
+        summarize_prompt = [
+            self.summarize_prompt,
+            HumanMessage(current_interaction),
         ]
-        summary = generate(question=summarize_prompt)
-        summary = summary.get("answer")
+
+        summary = summarize_pred(full_context=summarize_prompt)
+        summary = summary.get("summary")
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
-            summary = f"- {state['input']} - No valid answer generated"
+            summary = f"- {state['input_text']} - No valid answer generated"
 
         existing_history = state.get("chat_history", [])
 
@@ -455,18 +477,17 @@ class GNAgent:
         if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
-            synthesize_prompt = self.synthesize_prompt.copy()
-            last_content = synthesize_prompt["messages"][-1].content
-            formatted = last_content.format(
-                input=state["input"], updated_history=updated_history
-            )
-            synthesize_prompt["messages"] = self.synthesize_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
+            synthesize_prompt = [
+                self.synthesize_prompt,
+                HumanMessage(state["input_text"]),
             ]
-            result = generate(question=synthesize_prompt)
+            result = synthesize_pred(
+                input_text=synthesize_prompt,
+                updated_history=[HumanMessage(updated_history)],
+            )
             logging.info(f"Result in summarize: {result}")
 
-            result = result.get("answer")
+            result = result.get("conclusion")
             final_answer = (
                 result
                 if result
@@ -475,14 +496,14 @@ class GNAgent:
             )
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "answer": final_answer,
             "context": state.get("context", []),
             "chat_history": updated_history,
         }
 
-    def initialize_subgraph(self) -> Any:
-        graph_builder = StateGraph(SubagentState)
+    def initialize_resgraph(self) -> Any:
+        graph_builder = StateGraph(ResearcherState)
         graph_builder.add_node("rephrase", self.rephrase)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
@@ -498,27 +519,22 @@ class GNAgent:
             lambda state: state.get("should_continue", "summarize"),
             {"summarize": "summarize", "end": END},
         )
-        subgraph = graph_builder.compile(checkpointer=self.memory)
+        resgraph = graph_builder.compile(checkpointer=self.memory)
 
-        return subgraph
+        return resgraph
 
-    async def invoke_subgraph(self, question: str, thread_id: str | None = None) -> Any:
-        
-        config = {"configurable": {"thread_id": thread_id or self.chat_id}}  # conversation thread 
-        result = await self.subgraph.ainvoke({"input": question}, config)
+    async def invoke_resgraph(self, question: str, thread_id: str) -> Any:
+
+        config = {"configurable": {"thread_id": thread_id}}  # conversation thread
+        result = await self.resgraph.ainvoke({"input_text": question}, config)
 
         return result
 
     def split_query(self, query: str) -> list[str]:
-
+        # Split query in researcher
         logging.info("Splitting query")
 
-        split_prompt = self.split_prompt.copy()
-        last_content = split_prompt["messages"][-1].content
-        formatted = last_content.format(query=query)
-        split_prompt["messages"] = self.split_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
-        ]
+        split_prompt = [self.split_prompt, HumanMessage(query)]
         result = subquery(query=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
@@ -526,8 +542,8 @@ class GNAgent:
 
         return result
 
-    def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
-        """Combines results of subqueries
+    def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> str:
+        """Combines results of subqueries in researcher
 
         Args:
             query: original query
@@ -540,18 +556,15 @@ class GNAgent:
 
         logging.info("Finalizing")
 
-        finalize_prompt = self.finalize_prompt.copy()
-        last_content = finalize_prompt["messages"][-1].content
-        formatted = last_content.format(
-            query=query, subqueries=subqueries, answers=answers
+        finalize_prompt = [self.finalize_prompt, HumanMessage(query)]
+        result = finalize_pred(
+            query=finalize_prompt,
+            subqueries=[HumanMessage(subqueries)],
+            answers=[HumanMessage(answers)],
         )
-        finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [
-            HumanMessage(formatted)
-        ]
-        result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
-        result = result.get("answer")
+        result = result.get("conclusion")
         final_answer = (
             result
             if result
@@ -562,13 +575,13 @@ class GNAgent:
         return final_answer
 
     def run_subtask(self, subquery: str, research_thread_id: str) -> dict:
-        # Handle a subquery
-        result = asyncio.run(self.invoke_subgraph(subquery, research_thread_id))
+        # Handle a subquery for researcher
+        result = asyncio.run(self.invoke_resgraph(subquery, research_thread_id))
         return result
 
-    def manage_subtasks(self, query: str) -> dict:
+    def manage_subtasks(self, query: str) -> str:
         """Handles a query by decomposing it into smaller queries and
-        answering them
+        answering them for researcher
 
         Args:
             query: original query
@@ -597,7 +610,7 @@ class GNAgent:
 
         return concatenated_answer
 
-    def researcher(self, state: AgentState) -> Any:
+    def researcher(self, state: AgentState) -> dict:
         """Researches a query
 
         Args:
@@ -608,22 +621,57 @@ class GNAgent:
         """
 
         logging.info("Researching")
-        start = time.time()
-        if len(state.messages) < 3:
-            input = state.messages[0]
+        if len(state.messages) < 3:  # handle first call to researcher
+            input_text = state.messages[0]  # use original query
         else:
-            input = state.messages[-1]
-        input = input.content
-        logging.info(f"Input in researcher: {input}")
-        result = self.manage_subtasks(input)
-        end = time.time()
+            input_text = state.messages[-1]  # use reflection insights
+        input_text = input_text.content
+        logging.info(f"Input in researcher: {input_text}")
+        result = self.manage_subtasks(input_text)
         logging.info(f"Result in researcher: {result}")
 
         return {
             "messages": [result],
         }
 
-    def planner(self, state: AgentState) -> Any:
+    def expert(self, state: AgentState) -> dict:
+        """Addresses a query using own model thinking and search tool through ReAct
+
+        Args:
+            state: agent state containing query
+
+        Returns:
+            agent state updated with answer
+        """
+
+        logging.info("Expert extracting knowledge")
+        if len(state.messages) < 4:  # handle first call to expert
+            input_text = state.messages[1] + state.messages[0] # use plan and query
+        else:
+            input_text = state.messages[-2]  # use reflection insights
+
+        input_text = [self.expert_prompt, input_text]
+        logging.info(f"Input in expert: {input_text}")
+
+        react = React()
+        result = react(query=input_text)
+
+        logging.info(f"Result from expert: {result}")
+        answer = result.get("solution")
+
+        # Save information in database for reuse later by researcher
+        metadata = {"source": f"New Document {self.ext_db._collection.count() + 1}"}
+        self.ext_db.add_texts(
+            texts=[answer],
+            metadatas=[metadata],
+        )
+        self.ext_db.persist()
+
+        return {
+            "messages": [answer],
+        }
+
+    def planner(self, state: AgentState) -> dict:
         """Plans steps to tackle a problem
 
         Args:
@@ -634,16 +682,17 @@ class GNAgent:
         """
 
         logging.info("Planning")
-        input = [self.plan_system_prompt] + state.messages
-        logging.info(f"Input in planner: {input}")
-        result = plan(background=input)
+        input_text = [self.plan_prompt] + state.messages
+        logging.info(f"Input in planner: {input_text}")
+        result = plan(background=input_text)
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
+
         return {
             "messages": [answer],
         }
 
-    def reflector(self, state: AgentState) -> Any:
+    def reflector(self, state: AgentState) -> dict:
         """Reflects about progress
 
         Args:
@@ -655,7 +704,7 @@ class GNAgent:
 
         logging.info("Reflecting")
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
-        translated_messages = [self.refl_system_prompt, state.messages[0]] + [
+        translated_messages = [self.refl_prompt, state.messages[0]] + [
             trans_map[msg.__class__](content=msg.content) for msg in state.messages[1:]
         ]
         logging.info(f"Input in reflector: {translated_messages}")
@@ -666,11 +715,12 @@ class GNAgent:
             "Progress has been made. Use now all the resources to addess this new suggestion: "
             + answer
         )
+
         return {
             "messages": [HumanMessage(answer)],
         }
 
-    def supervisor(self, state: AgentState) -> Any:
+    def supervisor(self, state: AgentState) -> dict:
         """Manages interactions between other agents in system
 
         Args:
@@ -682,20 +732,20 @@ class GNAgent:
 
         logging.info("Supervising")
         messages = [
-            ("system", self.sup_system_prompt1),
+            ("system", self.sup_prompt1),
             *state.messages,
-            ("system", self.sup_system_prompt2),
+            ("system", self.sup_prompt2),
         ]
 
         if len(messages) > self.max_global_visits:
-            return {"next": "end"}
+            return {"next_decision": "end"}
 
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
-        next = result.get("next")
+        next_decision = result.get("next_decision")
 
         return {
-            "next": next,
+            "next_decision": next_decision,
         }
 
     def initialize_globgraph(self) -> Any:
@@ -704,16 +754,19 @@ class GNAgent:
         graph_builder.add_node("planner", self.planner)
         graph_builder.add_node("reflector", self.reflector)
         graph_builder.add_node("supervisor", self.supervisor)
+        graph_builder.add_node("expert", self.expert)
         graph_builder.add_edge(START, "planner")
         graph_builder.add_edge("researcher", "supervisor")
+        graph_builder.add_edge("expert", "supervisor")
         graph_builder.add_edge("planner", "researcher")
         graph_builder.add_edge("reflector", "researcher")
         graph_builder.add_conditional_edges(
             "supervisor",
-            lambda state: state.next,
+            lambda state: state.next_decision,
             {
                 "reflector": "reflector",
                 "researcher": "researcher",
+                "expert": "expert",
                 "end": END,
             },
         )
@@ -725,29 +778,38 @@ class GNAgent:
         graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": "planner",  # always plan first
+            "next_decision": "planner",  # always plan first
         }
-
         result = await graph.ainvoke(initial_state)
-
         return result
 
-    async def handler(self, query: str) -> Any:
-        # Main question handler of the system
+    async def handler(self, query: str) -> str:
+        """
+        Main question handler of the system
+        """
         global_result = await self.invoke_globgraph(query)
-        first_result = global_result.get("messages")[2].content # get first researcher feedback
-        finalize_prompt = self.finalize_prompt
-        finalize_prompt = finalize_prompt["messages"][0] + global_result.get("messages")
-        end_result = generate(question=finalize_prompt)
-        end_result = f"{first_result}\n{end_result.get('answer')}"
-        return end_result
+        end_prompt = global_result.get("messages")
+        end_result = end(messages=end_prompt)
+        end_result = end_result.get("feedback")
+
+        first_result = global_result.get("messages")[
+            2
+        ].content  # get first researcher feedback
+        second_result = global_result.get("messages")[
+            3
+        ].content  # get first expert feedback
+
+        output = f"\nInternal feedback: {first_result}\n\nExternal feedback: {second_result}\n\nProcessed feedback: {end_result}"
+
+        return output
 
 
-async def main(query: str):
+async def main(query: str) -> str:
     agent = GNAgent(
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
         db_path=DB_PATH,
+        ext_db_path=EXT_DB_PATH,
         naturalize_prompt=naturalize_prompt,
         rephrase_prompt=rephrase_prompt,
         analyze_prompt=analyze_prompt,
@@ -756,15 +818,17 @@ async def main(query: str):
         synthesize_prompt=synthesize_prompt,
         split_prompt=split_prompt,
         finalize_prompt=finalize_prompt,
-        sup_system_prompt1=sup_system_prompt1,
-        sup_system_prompt2=sup_system_prompt2,
-        plan_system_prompt=plan_system_prompt,
-        refl_system_prompt=refl_system_prompt,
+        sup_prompt1=sup_prompt1,
+        sup_prompt2=sup_prompt2,
+        plan_prompt=plan_prompt,
+        refl_prompt=refl_prompt,
+        expert_prompt=expert_prompt,
     )
-
     output = await agent.handler(query)
-    logging.info(f"System feedback: {output}")
+    logging.info(f"\n\nSystem feedback: {output}")
+
+    return output
 
 
 if __name__ == "__main__":
-    asyncio.run(main(query))
+    asyncio.run(main(QUERY))
