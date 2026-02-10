@@ -184,7 +184,7 @@ class AISearch:
             foaf => http://xmlns.com/foaf/0.1
             geoSeries => http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc
 
-            Link pointing to specific trait should be translated to CD links using the trait id and the dataset name
+            Link pointing to specific trait should be translated to CD links using the trait id and the dataset name.
             Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
             Trait id: 16339
             Dataset name: BXDPublish
