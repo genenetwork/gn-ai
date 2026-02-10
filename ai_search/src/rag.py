@@ -183,6 +183,12 @@ class AISearch:
             v => http://www.w3.org/2006/vcard/ns
             foaf => http://xmlns.com/foaf/0.1
             geoSeries => http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc
+
+            Link pointing to specific trait should be translated to CD links using the trait id and the dataset name
+            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
+            Trait id: 16339
+            Dataset name: BXDPublish
+            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
             \n
             """
 
@@ -194,7 +200,7 @@ class AISearch:
         return response.get("feedback")
 
 
-def main(query: str) -> str:
+def main(query: str):
     search_task = AISearch(
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
