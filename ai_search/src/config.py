@@ -6,6 +6,8 @@ Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
 import os
+from pydantic import BaseModel, Field
+from typing import List
 
 import dspy
 import torch
@@ -69,13 +71,24 @@ else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
 
-dspy.configure(lm=llm)
+dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
+
+class Information(BaseModel):
+    """Extract relevant information for query"""
+    answer: str = Field(description="Specific point addressing the query from the context")
+    links: List[str] = Field(description="All links associated to RDF entities related to the point")
+
+class ListInformation(BaseModel):
+    """Address recursively a query"""
+    detailed_answers: List[Information] = Field(description="List of answers to the query")
+    final_answer: str = Field(description="Synthesized and comprehensive answer using detailed answers")
 
 class Generate(dspy.Signature):
-    context: list = dspy.InputField()
-    input_text: str = dspy.InputField()
-    answer: str = dspy.OutputField()
+    """Wrap generation interface"""
+    context: list = dspy.InputField(desc="Background information")
+    input_text: str = dspy.InputField(desc="Query and instructions")
+    feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
 
 generate = dspy.Predict(Generate)
