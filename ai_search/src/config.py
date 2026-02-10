@@ -49,8 +49,8 @@ if int(MODEL_TYPE) == 0:
         api_base="http://localhost:7501/v1",
         api_key="local",
         model_type="chat",
-        max_tokens=1_000,
-        n_ctx=5_000,
+        max_tokens=10_000,
+        n_ctx=10_000,
         seed=2_025,
         temperature=0,
         verbose=False,
@@ -62,7 +62,7 @@ elif int(MODEL_TYPE) == 1:
     llm = dspy.LM(
         MODEL_NAME,
         api_key=API_KEY,
-        max_tokens=5_000,
+        max_tokens=10_000,
         temperature=0,
         verbose=False,
     )
