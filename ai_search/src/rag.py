@@ -1,7 +1,6 @@
 """
 RAG system for AI search in GeneNetwork
-This is the main module of the package
-To run: `python agent.py`
+Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
 import json
@@ -21,6 +20,8 @@ from tqdm import tqdm
 
 from config import *
 
+
+EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 @dataclass
 class AISearch:
@@ -248,34 +249,3 @@ class AISearch:
             context=retrieved_docs,
         )
         return response.get("feedback")
-
-
-def main(query: str):
-    general_search = AISearch(
-        corpus_path=CORPUS_PATH,
-        pcorpus_path=PCORPUS_PATH,
-        db_path=DB_PATH,
-    )
-    task_type = general_search.classify_search(query)
-    if task_type.get("decision") == "keyword":
-        new_query = general_search.extract_keywords(query)
-        new_query = new_query.get("keywords")
-        # Run a targeted search
-        targeted_search = AISearch(
-            corpus_path=CORPUS_PATH,
-            pcorpus_path=PCORPUS_PATH,
-            db_path=DB_PATH,
-            keyword_weight=0.7,
-        )
-        output = targeted_search.handle(
-            new_query
-        )  # use extracted keywords instead for hybrid search
-    else:
-        output = general_search.handle(
-            query
-        )  # run a general search with user query straight
-    return output.model_dump_json(indent=4)
-
-
-if __name__ == "__main__":
-    print(main(QUERY))
