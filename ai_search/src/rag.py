@@ -25,11 +25,11 @@ from config import *
 @dataclass
 class AISearch:
     """
-    Represents RAG system used for AI search
-    Encapsulates all functionalities of the system
-    Takes:
+    Represent RAG system used for AI search
+    Encapsulate all functionalities of the system
+    Take:
          Paths of corpus and database
-    Executes operations:
+    Execute operations:
          Document processing
          Document embedding and database creation
          Run of query
@@ -38,6 +38,7 @@ class AISearch:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    keyword_weight: float = 0.5
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
 
@@ -74,7 +75,7 @@ class AISearch:
                 self.db.as_retriever(search_kwargs={"k": 10}),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.5, 0.5],  # might need finetuning
+            weights=[1 - self.keyword_weight, self.keyword_weight],
         )
 
     def corpus_to_docs(
@@ -82,7 +83,7 @@ class AISearch:
         corpus_path: str,
         chunk_size: int = 1,  # small chunk size to match embedding chunk
     ) -> list:
-        """Extracts documents from file and performs processing
+        """Extract documents from file and performs processing
 
         Args:
             corpus_path: path to directory containing corpus
@@ -113,7 +114,7 @@ class AISearch:
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
     ) -> Any:  # small chunk_size for atomicity and memory management
-        """Initializes or reads embedding database
+        """Initialize or read embedding database
 
         Args:
             docs: processed document chunks
@@ -158,7 +159,57 @@ class AISearch:
             db.persist()
             return db
 
+    def extract_keywords(self, query: str) -> str:
+        """Extract list of keywords from query
+
+        Args:
+            query: user query
+
+        Returns:
+            list of keywords
+        """
+
+        system_prompt = """
+            You are extremely good at extracting keywords from a search query related to specific entities (traits, markers, etc) in GeneNetwork.
+            Produce a list of space separated keywords featured in the query below. Only return that list.
+            \n
+            """
+        final_prompt = system_prompt + query
+        keywords = extract(input_text=final_prompt)
+        return keywords
+
+    def classify_search(self, query: str) -> str:
+        """Classify user query as keyword search or semantic search
+
+        Args:
+            query: user query
+
+        Returns:
+            type of search for query processing
+        """
+
+        system_prompt = """
+            You are an experienced search classifier.
+            You can accurately tell from a query if a keyword search or semantic search is more appropriate to provide satisfactory answers to the user.
+            A keyword search is appropriate when specific entities feature in the query (i.e trait id, marker code, etc.).
+            A semantic search is better when the system needs to understand the meaning of the query and make implicit connections.
+            Infer the type of search that should be performed given the query below:
+            \n
+            """
+        final_prompt = system_prompt + query
+        search_type = classify(input_text=final_prompt)
+
+        return search_type
+
     def handle(self, query: str) -> str:
+        """Run user query through the RAG system for search
+
+        Args:
+            query: user query
+
+        Returns:
+            response to user query
+        """
         retrieved_docs = self.ensemble_retriever.invoke(query)
         system_prompt = """
             You excel at addressing search query using the context you have. You do not make mistakes.
@@ -191,7 +242,6 @@ class AISearch:
             New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
             \n
             """
-
         final_prompt = system_prompt + query
         response = generate(
             input_text=final_prompt,
@@ -201,12 +251,29 @@ class AISearch:
 
 
 def main(query: str):
-    search_task = AISearch(
+    general_search = AISearch(
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
         db_path=DB_PATH,
     )
-    output = search_task.handle(query)
+    task_type = general_search.classify_search(query)
+    if task_type.get("decision") == "keyword":
+        new_query = general_search.extract_keywords(query)
+        new_query = new_query.get("keywords")
+        # Run a targeted search
+        targeted_search = AISearch(
+            corpus_path=CORPUS_PATH,
+            pcorpus_path=PCORPUS_PATH,
+            db_path=DB_PATH,
+            keyword_weight=0.7,
+        )
+        output = targeted_search.handle(
+            new_query
+        )  # use extracted keywords instead for hybrid search
+    else:
+        output = general_search.handle(
+            query
+        )  # run a general search with user query straight
     return output.model_dump_json(indent=4)
 
 

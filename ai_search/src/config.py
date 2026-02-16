@@ -73,6 +73,22 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
+class Classification(dspy.Signature):
+    input_text: str = dspy.InputField()
+    decision: str = dspy.OutputField(desc='"keyword" or "semantic"')
+
+
+classify = dspy.Predict(Classification)
+
+
+class Extraction(dspy.Signature):
+    input_text: str = dspy.InputField()
+    keywords: str = dspy.OutputField()
+
+
+extract = dspy.Predict(Extraction)
+
+
 class Information(BaseModel):
     """Extract relevant information for query"""
 
@@ -95,7 +111,7 @@ class ListInformation(BaseModel):
     )
 
 
-class Generate(dspy.Signature):
+class Generation(dspy.Signature):
     """Wrap generation interface"""
 
     context: list = dspy.InputField(desc="Background information")
@@ -103,4 +119,4 @@ class Generate(dspy.Signature):
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
 
-generate = dspy.Predict(Generate)
+generate = dspy.Predict(Generation)
