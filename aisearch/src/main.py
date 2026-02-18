@@ -5,7 +5,7 @@ To run: `python main.py`
 
 import os
 
-from aisearch.rag import *
+from gnais.rag import *
 
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")

@@ -18,7 +18,7 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from tqdm import tqdm
 
-from aisearch.config import *
+from gnais.config import *
 
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
