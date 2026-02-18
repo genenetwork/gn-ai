@@ -1,7 +1,4 @@
-"""
-This is the main module of the package
-To run: `python main.py`
-"""
+"""This is the main module of the package"""
 
 import os
 
@@ -67,7 +64,7 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def main(query: str):
+def search(query: str):
     general_search = AISearch(
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
@@ -93,6 +90,3 @@ def main(query: str):
         )  # run a general search with user query straight
     return output.model_dump_json(indent=4)
 
-
-if __name__ == "__main__":
-    print(main(QUERY))

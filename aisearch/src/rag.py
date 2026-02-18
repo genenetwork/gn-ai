@@ -1,5 +1,5 @@
 """
-RAG system for AI search in GeneNetwork
+Module with RAG system for AI search in GeneNetwork
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 

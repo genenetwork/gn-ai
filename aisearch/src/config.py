@@ -1,7 +1,4 @@
-"""
-This module sets up configurations for the RAG
-It also provides different constructs to interact with the LLM
-"""
+"""This module provides different constructs to interact with the LLM"""
 
 import dspy
 import torch
