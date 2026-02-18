@@ -20,20 +20,20 @@ pip install gnais
 
 ## Usage
 
-To use **GNAIS**, you need to define a few variables in your session or script.
+To use **GNAIS**, you need to define a few parameters from your bash environment.
 
-```python
-CORPUS_PATH=<YOUR_PATH>
-PCORPUS_PATH=<YOUR_PATH>
-DB_PATH=<YOUR_PATH>
-SEED=<YOUR_VALUE>
-MODEL_NAME=<DSPY_COMPLIANT_MODEL_NAME>
-API_KEY=<YOUR_API_KEY_IF_REQUIRED>
-QUERY=<YOUR_QUERY>
+```bash
+export CORPUS_PATH=<YOUR_PATH>
+export PCORPUS_PATH=<YOUR_PATH>
+export DB_PATH=<YOUR_PATH>
+export SEED=<YOUR_VALUE>
+export MODEL_TYPE=<YOUR_VALUE>
+export MODEL_NAME=<DSPY_COMPLIANT_MODEL_NAME>
+export API_KEY=<YOUR_API_KEY_IF_REQUIRED>
+export QUERY=<YOUR_QUERY>
 ```
 
-
-Once defined, you can run your search with:
+Once defined, you can run your search from a Python shell or script with:
 
 ```python
 from gnais.search import search
