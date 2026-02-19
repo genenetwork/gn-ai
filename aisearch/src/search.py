@@ -1,9 +1,11 @@
 """This is the main module of the package"""
 
 import os
+import warnings
 
 from gnais.rag import *
 
+warnings.filterwarnings("ignore")
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")
 if CORPUS_PATH is None:
@@ -91,4 +93,3 @@ def search(query: str):
             query
         )  # run a general search with user query straight
     return output.model_dump_json(indent=4)
-
