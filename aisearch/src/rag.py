@@ -12,16 +12,15 @@ from pathlib import Path
 from typing import Any
 
 from chromadb.config import Settings
+from gnais.config import *
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from tqdm import tqdm
 
-from gnais.config import *
-
-
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+
 
 @dataclass
 class AISearch:
