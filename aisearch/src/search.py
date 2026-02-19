@@ -72,6 +72,7 @@ def search(query: str):
     )
     task_type = general_search.classify_search(query)
     if task_type.get("decision") == "keyword":
+        print("\nRunning keyword-ish search...\n")
         new_query = general_search.extract_keywords(query)
         new_query = new_query.get("keywords")
         # Run a targeted search
@@ -85,6 +86,7 @@ def search(query: str):
             new_query
         )  # use extracted keywords instead for hybrid search
     else:
+        print("\nRunning semantic-ish search...\n")
         output = general_search.handle(
             query
         )  # run a general search with user query straight

@@ -69,11 +69,11 @@ class AISearch:
         bm25_retriever = BM25Retriever.from_texts(
             texts=self.docs,
             metadatas=metadatas,
-            k=10,  # might need finetuning
+            k=20,  # might need finetuning
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.db.as_retriever(search_kwargs={"k": 10}),  # might need finetuning
+                self.db.as_retriever(search_kwargs={"k": 20}),  # might need finetuning
                 bm25_retriever,
             ],
             weights=[1 - self.keyword_weight, self.keyword_weight],
