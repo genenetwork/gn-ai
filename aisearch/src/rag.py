@@ -2,7 +2,9 @@
 Module with RAG system for AI search in GeneNetwork
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
-
+__all__ = (
+    "AISearch",
+)
 import json
 import logging
 import os
