@@ -2,7 +2,7 @@
 
 ## Description
 
-**GNAIS** (GeneNetwork AI Search) is a python package that help digest metadata around GeneNetwork using language models. It allows running natural language queries against RDF data (metadata) converted to text and preprocessed locally.
+**GNAIS** (GeneNetwork AI Search) is a python package that helps digest metadata around GeneNetwork using language models. It allows running natural language queries against RDF data (metadata) converted to text and preprocessed locally.
 
 **GNAIS** performs a hybrid search (keyword and semantic) through a RAG (Retrieval Augmented Generation) system. The embedding model for semantic is Qwen/Qwen3-Embedding-0.6B (open model).
 
