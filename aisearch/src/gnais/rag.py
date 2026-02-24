@@ -23,7 +23,6 @@ from tqdm import tqdm
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
-
 @dataclass
 class AISearch:
     """
