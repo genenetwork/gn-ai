@@ -3,7 +3,7 @@
 import os
 import warnings
 
-from gnais.rag import *
+from gnais.rag.rag import *
 
 warnings.filterwarnings("ignore")
 

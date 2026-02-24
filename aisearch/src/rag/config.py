@@ -1,9 +1,11 @@
 """This module provides different constructs to interact with the LLM"""
+
 __all__ = (
     "classify",
     "extract",
     "generate",
 )
+
 import dspy
 import torch
 from pydantic import BaseModel, Field

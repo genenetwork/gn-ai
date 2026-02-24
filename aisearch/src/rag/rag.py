@@ -2,9 +2,8 @@
 Module with RAG system for AI search in GeneNetwork
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
-__all__ = (
-    "AISearch",
-)
+
+__all__ = ("AISearch",)
 import json
 import logging
 import os
@@ -14,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from chromadb.config import Settings
-from gnais.config import *
+from gnais.rag.config import *
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
