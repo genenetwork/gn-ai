@@ -24,6 +24,8 @@ dependencies = [
     "tqdm (>=4.67.3,<5.0.0)"
 ]
 
+[project.urls]
+Homepage = "https://github.com/genenetwork/gn-ai"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
