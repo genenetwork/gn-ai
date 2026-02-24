@@ -3,7 +3,11 @@ name = "gnais"
 version = "0.1.2"
 description = "Seach tool powered with AI to access GeneNetwork metadata"
 authors = [
-    {name = "Johannes Medagbe",email = "johanmedagbe@gmail.com"}
+    {name = "Johannes Medagbe", email = "johanmedagbe@gmail.com"}
+]
+maintainers = [
+    {name = "Johannes Medagbe", email = "johanmedagbe@gmail.com"},
+    {name = "Munyoki Kilyungi", email = "me@bonfacemunyoki.com"},
 ]
 license = {text = "MIT"}
 readme = "README.md"
