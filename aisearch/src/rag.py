@@ -94,7 +94,7 @@ class AISearch:
         """
 
         if not Path(corpus_path).exists():
-            raise ValueError("corpus_path is not a valid path")
+            raise FileNotFoundError("corpus_path is not a valid path")
 
         # Read documents from a single file in corpus path
         with open(corpus_path) as f:
