@@ -1,6 +1,6 @@
 [project]
 name = "gnais"
-version = "0.1.2"
+version = "0.1.6"
 description = "Seach tool powered with AI to access GeneNetwork metadata"
 authors = [
     {name = "Johannes Medagbe",email = "johanmedagbe@gmail.com"}
