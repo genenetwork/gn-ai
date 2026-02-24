@@ -9,13 +9,13 @@ warnings.filterwarnings("ignore")
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")
 if CORPUS_PATH is None:
-    raise ValueError("CORPUS_PATH must be specified to find corpus")
+    raise FileNotFoundError("CORPUS_PATH must be specified to find corpus")
 PCORPUS_PATH = os.getenv("PCORPUS_PATH")
 if PCORPUS_PATH is None:
-    raise ValueError("PCORPUS_PATH must be specified to read corpus")
+    raise FileNotFoundError("PCORPUS_PATH must be specified to read corpus")
 DB_PATH = os.getenv("DB_PATH")
 if DB_PATH is None:
-    raise ValueError("DB_PATH must be specified to access database")
+    raise FileNotFoundError("DB_PATH must be specified to access database")
 QUERY = os.getenv("QUERY")
 if QUERY is None:
     raise ValueError("QUERY must be specified for program to run")
