@@ -1,9 +1,10 @@
 """This is the main module of the package"""
 
 import os
-import torch
 import warnings
 
+import dspy
+import torch
 from gnais.rag.rag import *
 
 warnings.filterwarnings("ignore")
