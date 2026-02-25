@@ -57,7 +57,7 @@ def search(query: str):
     system_prompt = """
             You excel at addressing search query using the context you have. You do not make mistakes.
             Extract answers to the query from the context and provide links associated with each RDF entity.
-            All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
+            All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
             Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
             Trait id: 16339
             Dataset name: BXDPublish
