@@ -2,7 +2,7 @@ import dspy
 import torch
 
 from gnais.config import Config
-from gnais.rag import AISearch
+from gnais.rag.rag import AISearch
 from flask import Flask, request, jsonify
 
 
@@ -38,8 +38,8 @@ else:
     )
 
 
-# KLUDGE: If you use a local model, there is a very high likelihood
-# that this will break because it won't give a valid JSON response
+# KLUDGE: If you use a local model not large,
+# there is a very high likelihood that JSON validation
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
@@ -67,10 +67,10 @@ def search():
         return jsonify({"error": "Missing query parameter 'q'"}), 400
     if len(query) > 1000:  # limit query length
         return jsonify({"error": "Query too long"}), 400
-    output = None
     task_type = general_search.classify_search(query)
     if task_type.get("decision") == "keyword":
         output = targeted_search.handle(
             general_search.extract_keywords(query).get("keywords"))
+        return output.model_dump_json(indent=4)
     output = general_search.handle(query)
     return output.model_dump_json(indent=4)
