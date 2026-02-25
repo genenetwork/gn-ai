@@ -5,7 +5,7 @@ from typing import Any
 
 import dspy
 from gnais.rag.config import ListInformation
-from SPARQLWrapper import SPARQLWrapper, JSON
+from SPARQLWrapper import JSON, SPARQLWrapper
 
 TTL_PATH = os.getenv("TTL_PATH")
 if TTL_PATH is None:
@@ -15,7 +15,9 @@ if TTL_PATH is None:
 
 
 def extract_schema(ttl_path: str) -> tuple[list, list]:
-    ttl_files = [os.path.join(ttl_path, ttl) for ttl in os.listdir(ttl_path) if 'ttl' in ttl]
+    ttl_files = [
+        os.path.join(ttl_path, ttl) for ttl in os.listdir(ttl_path) if "ttl" in ttl
+    ]
     prefixes = []
     predicates = []
     for ttl in ttl_files:
@@ -86,4 +88,3 @@ class AISearch(dspy.Module):
 
     def forward(self, query: str):
         return self.react(query=query)
-

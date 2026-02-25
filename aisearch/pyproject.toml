@@ -1,6 +1,6 @@
 [project]
 name = "gnais"
-version = "0.2.1"
+version = "0.2.3"
 description = "Seach tool powered with AI to access GeneNetwork metadata"
 authors = [
     {name = "Johannes Medagbe", email = "johanmedagbe@gmail.com"}
@@ -23,7 +23,8 @@ dependencies = [
     "rank-bm25 (>=0.2.2,<0.3.0)",    
     "sentence-transformers (>=5.1.2,<6.0.0)",
     "torch (>=2.10.0,<3.0.0)",
-    "tqdm (>=4.67.3,<5.0.0)",
+    "tqdm (>=4.67.3,<5.0.0)",    
+    "sparqlwrapper (>=2.0.0,<3.0.0)"
 ]
 
 [project.urls]

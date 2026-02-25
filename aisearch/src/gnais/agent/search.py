@@ -1,7 +1,6 @@
 """This is the main module of the package using agent tool calling"""
 
 import torch
-
 from gnais.agent.agent import *
 
 QUERY = os.getenv("QUERY")
