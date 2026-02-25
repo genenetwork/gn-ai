@@ -1,5 +1,7 @@
 """This is the main module of the package using agent tool calling"""
 
+import torch
+
 from gnais.agent.agent import *
 
 QUERY = os.getenv("QUERY")
@@ -53,7 +55,17 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str):
-    search_task = AISearch()
-    output = search_task(query=query)
-    output = output.get("solution")
+    system_prompt = """
+            You excel at addressing search query using the context you have. You do not make mistakes.
+            Extract answers to the query from the context and provide links associated with each RDF entity.
+            All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
+            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
+            Trait id: 16339
+            Dataset name: BXDPublish
+            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
+            \n
+            """
+    final_query = system_prompt + query
+    search = AISearch()
+    output = search(query=final_query).get("solution")
     return output.model_dump_json(indent=4)
