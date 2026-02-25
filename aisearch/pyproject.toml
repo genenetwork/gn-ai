@@ -3,7 +3,11 @@ name = "gnais"
 version = "0.1.6"
 description = "Seach tool powered with AI to access GeneNetwork metadata"
 authors = [
-    {name = "Johannes Medagbe",email = "johanmedagbe@gmail.com"}
+    {name = "Johannes Medagbe", email = "johanmedagbe@gmail.com"}
+]
+maintainers = [
+    {name = "Johannes Medagbe", email = "johanmedagbe@gmail.com"},
+    {name = "Munyoki Kilyungi", email = "me@bonfacemunyoki.com"},
 ]
 license = {text = "MIT"}
 readme = "README.md"
@@ -20,6 +24,8 @@ dependencies = [
     "tqdm (>=4.67.3,<5.0.0)"
 ]
 
+[project.urls]
+Homepage = "https://github.com/genenetwork/gn-ai"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
