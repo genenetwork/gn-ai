@@ -2,7 +2,7 @@ import dspy
 import torch
 
 from gnais.config import Config
-from gnais.rag.rag import AISearch
+from gnais.rag import AISearch
 from flask import Flask, request, jsonify
 
 
