@@ -4,6 +4,7 @@ import torch
 from gnais.config import Config
 from gnais.rag import AISearch
 from flask import Flask, request, jsonify
+from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
@@ -19,6 +20,9 @@ limiter = Limiter(
     storage_uri="memory://",
     strategy="fixed-window",
 )
+
+cache = Cache(config={"CACHE_TYPE": "SimpleCache"})
+cache.init_app(app)
 
 #  Bootstrapping our model
 torch.manual_seed(app.config['SEED'])
@@ -73,6 +77,7 @@ targeted_search = AISearch(
 
 @app.route("/api/v1/search", methods=['GET'])
 @limiter.limit("200 per day")
+@cache.cached(timeout=21600)  # cache response for 6 hours
 def search():
     query = request.args.get('q')
     if not query:
