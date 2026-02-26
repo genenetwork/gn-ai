@@ -38,8 +38,8 @@ else:
     )
 
 
-# KLUDGE: If you use a local model not large,
-# there is a very high likelihood that JSON validation
+# KLUDGE: If you use a small local model, there is a very high
+# likelihood that JSON validation will fail.
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
