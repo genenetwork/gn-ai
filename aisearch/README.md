@@ -141,3 +141,23 @@ Response:
     "final_answer": "Central nervous system traits across the four mouse datasets show distinct research focuses: BXD mice (10 traits) include stress-induced changes (CMS treatment effects on organ weights and sacrifice age), morphological measurements (brain region weights), and locomotor behavior in novel environments. BDL mice (1 trait) measure aging-related fear conditioning and baseline anxiety responses. CCB mice (8 traits) emphasize behavioral and cognitive phenotypes including fear learning/extinction, anxiety-like behavior, and social interaction measures (dominance, aggression, sniffing). MDP mice (1 trait) focus on pharmacological responses, specifically ethanol sensitization. The BXD dataset provides the most comprehensive CNS phenotyping with 10 traits covering pharmacology, morphology, and behavior. CCB traits are particularly rich in behavioral/cognitive measures, while BDL and MDP datasets each contribute specialized phenotypes for aging and drug response respectively. All traits are measured in adult or aging mice, with BXD and CCB using controlled behavioral testing paradigms and BXD additionally measuring stress-induced physiological changes."
 }
 ```
+
+## Running the Web App
+
+Install all the python dependencies:
+
+```
+pip install .
+```
+
+Copy over the local environment configuration file:
+
+```
+cp .env.example env  # Update all the variables
+```
+
+Start a flask development server:
+
+```
+flask --app src/web/app.py run --port 5000
+```
