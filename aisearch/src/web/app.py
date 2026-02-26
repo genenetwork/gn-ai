@@ -77,7 +77,7 @@ targeted_search = AISearch(
 
 @app.route("/api/v1/search", methods=['GET'])
 @limiter.limit("300 per day")
-@cache.cached(timeout=21600)  # cache response for 6 hours
+@cache.cached(timeout=604800)  # cache response for 1 week
 def search():
     query = request.args.get('q')
     if not query:
