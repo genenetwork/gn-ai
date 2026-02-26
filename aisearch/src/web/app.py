@@ -4,10 +4,21 @@ import torch
 from gnais.config import Config
 from gnais.rag import AISearch
 from flask import Flask, request, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["100 per minute"],
+    # KLUDGE: Consider moving this from RAM to Redis.
+    storage_uri="memory://",
+    strategy="fixed-window",
+)
 
 #  Bootstrapping our model
 torch.manual_seed(app.config['SEED'])
@@ -61,6 +72,7 @@ targeted_search = AISearch(
 
 
 @app.route("/api/v1/search", methods=['GET'])
+@limiter.limit("200 per day")
 def search():
     query = request.args.get('q')
     if not query:
