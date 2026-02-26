@@ -16,12 +16,11 @@ limiter = Limiter(
     get_remote_address,
     app=app,
     default_limits=["100 per minute"],
-    # KLUDGE: Consider moving this from RAM to Redis.
-    storage_uri="memory://",
+    storage_uri="redis://localhost:6379",
     strategy="fixed-window",
 )
 
-cache = Cache(config={"CACHE_TYPE": "SimpleCache"})
+cache = Cache(config={"CACHE_TYPE": "RedisCache"})
 cache.init_app(app)
 
 #  Bootstrapping our model
