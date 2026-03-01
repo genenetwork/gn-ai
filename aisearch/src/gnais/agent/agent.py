@@ -1,6 +1,7 @@
 """Agent with sparql tool calling for AI search in GeneNetwork"""
 
 import os
+from pathlib import Path
 from typing import Any
 
 import dspy
@@ -49,7 +50,13 @@ translate_query = dspy.Predict(QueryTranslation)
 def fetch_data(query: str) -> Any:
     sparql = SPARQLWrapper("https://rdf.genenetwork.org/sparql/")
     sparql.setReturnFormat(JSON)
-    prefixes, predicates = extract_schema(TTL_PATH)
+    if Path(f"{TTL_PATH}/schema.txt").exists():
+        with open(f"{TTL_PATH}/schema.txt") as f:
+            prefixes, predicates = json.loads(f.read())
+    else:
+        prefixes, predicates = extract_schema(TTL_PATH)
+        with open(f"{TTL_PATH}/schema.txt", "w") as f:
+            f.write(json.dumps([prefixes, predicates]))
     sparql_query = translate_query(
         original_query=query, rdf_prefixes=prefixes, triple_predicates=predicates
     ).get("translated_query")
