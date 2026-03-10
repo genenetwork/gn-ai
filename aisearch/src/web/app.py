@@ -72,10 +72,6 @@ targeted_search = AISearch(
 )
 
 
-def prettify(text: str):
-    return json.dumps(json.loads(text), indent=4)  # pretty print as json
-
-
 @app.route("/api/v1/search", methods=["GET"])
 @limiter.limit("300 per day")
 @cache.cached(timeout=604800)  # cache response for 1 week
@@ -88,6 +84,6 @@ def search():
     task_type = classify_search(query)
     if task_type.get("decision") == "keyword":
         output = targeted_search.handle(extract_keywords(query).get("keywords"))
-        return prettify(output)
+        return output
     output = general_search.handle(query)
-    return prettify(output)
+    return output
