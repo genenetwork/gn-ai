@@ -92,11 +92,7 @@ def search(query: str):
     return query, set_search
 
 
-def prettify(text: str):
-    return json.dumps(json.loads(text), indent=4) # pretty print as json
-
-
 def digest(query: str):
     query, set_search = search(query)
     output = set_search.handle(query)
-    return prettify(output)
+    return output
