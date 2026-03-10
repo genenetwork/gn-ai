@@ -3,24 +3,42 @@ Module with RAG system for AI search in GeneNetwork
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
-__all__ = ("AISearch",)
+__all__ = (
+    "AISearch",
+    "THREAD",
+    "extract_keywords",
+    "classify_search",
+)
+
+import asyncio
 import json
-import logging
 import os
 import time
+import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from chromadb.config import Settings
 from gnais.rag.config import *
-from langchain.retrievers.ensemble import EnsembleRetriever
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_huggingface import HuggingFaceEmbeddings
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from tqdm import tqdm
+from typing_extensions import Annotated, TypedDict
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+THREAD = uuid.uuid4().hex[:8]
+
+
+class State(TypedDict):
+    messages: Annotated[list[BaseMessage], add_messages]
 
 
 @dataclass
@@ -42,6 +60,8 @@ class AISearch:
     keyword_weight: float = 0.5
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
+    memory: Any = field(init=False)
+    graph: Any = field(init=False)
 
     def __post_init__(self):
         # Process or load documents
@@ -78,6 +98,14 @@ class AISearch:
             ],
             weights=[1 - self.keyword_weight, self.keyword_weight],
         )
+
+        self.memory = MemorySaver()
+
+        graph_builder = StateGraph(State)
+        graph_builder.add_node("chat", self.chat)
+        graph_builder.add_edge(START, "chat")
+        graph_builder.add_edge("chat", END)
+        self.graph = graph_builder.compile(checkpointer=self.memory)
 
     def corpus_to_docs(
         self,
@@ -160,49 +188,7 @@ class AISearch:
             db.persist()
             return db
 
-    def extract_keywords(self, query: str) -> str:
-        """Extract list of keywords from query
-
-        Args:
-            query: user query
-
-        Returns:
-            list of keywords
-        """
-
-        system_prompt = """
-            You are extremely good at extracting keywords from a search query related to specific entities (traits, markers, etc) in GeneNetwork.
-            Produce a list of space separated keywords featured in the query below. Only return that list.
-            \n
-            """
-        final_prompt = system_prompt + query
-        keywords = extract(input_text=final_prompt)
-        return keywords
-
-    def classify_search(self, query: str) -> str:
-        """Classify user query as keyword search or semantic search
-
-        Args:
-            query: user query
-
-        Returns:
-            type of search for query processing
-        """
-
-        system_prompt = """
-            You are an experienced search classifier.
-            You can accurately tell from a query if a keyword search or semantic search is more appropriate to provide satisfactory answers to the user.
-            A keyword search is appropriate when specific entities feature in the query (i.e trait id, marker code, etc.).
-            A semantic search is better when the system needs to understand the meaning of the query and make implicit connections.
-            Infer the type of search that should be performed given the query below:
-            \n
-            """
-        final_prompt = system_prompt + query
-        search_type = classify(input_text=final_prompt)
-
-        return search_type
-
-    def handle(self, query: str) -> str:
+    def chat(self, state: State) -> dict:
         """Run user query through the RAG system for search
 
         Args:
@@ -211,11 +197,14 @@ class AISearch:
         Returns:
             response to user query
         """
-        retrieved_docs = self.ensemble_retriever.invoke(query)
+        query = state.get("messages")
+        chat_history = deepcopy(query)
+        new_query = deepcopy(query[-1].content)
+        retrieved_docs = self.ensemble_retriever.invoke(new_query)
         system_prompt = """
-            You excel at addressing search query using the context you have. You do not make mistakes.
-            Extract answers to the query from the context and provide links associated with each RDF entity.
-            To build links you must replace RDF prefixes by namespaces.
+            You excel at addressing search query using the context and chat history you have. You do not make mistakes.
+            Extract answers to the query below from the context and chat history. Use the chat history before moving to the context.
+            Provide links associated with each RDF entity. To build links you must replace RDF prefixes by namespaces.
             Here is the mapping of prefixes and namespaces:
             gn => http://rdf.genenetwork.org/v1/id
             gnc => http://rdf.genenetwork.org/v1/category
@@ -237,15 +226,75 @@ class AISearch:
             geoSeries => http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc
 
             All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
-            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
+            Original trait link: https://rdf.genenetwork.org/v1/id/trait_16339
             Trait id: 16339
             Dataset name: BXDPublish
-            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
-            \n
+            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
             """
-        final_prompt = system_prompt + query
+        final_prompt = system_prompt + new_query
         response = generate(
             input_text=final_prompt,
+            chat_history=chat_history,
             context=retrieved_docs,
         )
-        return response.get("feedback")
+        response = str(response.get("feedback"))
+        return {"messages": [response]}
+
+    async def call_graph(self, query: str) -> Any:
+        config = {"configurable": {"thread_id": THREAD}}
+        result = await self.graph.ainvoke(
+            {"messages": [HumanMessage(content=query)]}, config
+        )
+        return result
+
+    def handle(self, query: str) -> str:
+        result = asyncio.run(self.call_graph(query))
+        result = result.get("messages")[-1].content
+        reformatted = reformat(input_text=result).get(
+            "result"
+        )  # transform to valid nested dictionary
+        return reformatted
+
+
+def extract_keywords(query: str) -> str:
+    """Extract list of keywords from query
+
+    Args:
+        query: user query
+
+    Returns:
+        list of keywords
+    """
+
+    system_prompt = """
+            You are extremely good at extracting keywords from a search query related to specific entities (traits, markers, etc) in GeneNetwork.
+            Produce a list of space separated keywords featured in the query below. Only return that list.
+            \n
+            """
+    final_prompt = system_prompt + query
+    keywords = extract(input_text=final_prompt)
+    return keywords
+
+
+def classify_search(query: str) -> str:
+    """Classify user query as keyword search or semantic search
+
+    Args:
+        query: user query
+
+    Returns:
+        type of search for query processing
+    """
+
+    system_prompt = """
+            You are an experienced search classifier.
+            You can accurately tell from a query if a keyword search or semantic search is more appropriate to provide satisfactory answers to the user.
+            A keyword search is appropriate when specific entities feature in the query (i.e trait id, marker code, etc.).
+            A semantic search is better when the system needs to understand the meaning of the query and make implicit connections.
+            Infer the type of search that should be performed given the query below:
+            \n
+            """
+    final_prompt = system_prompt + query
+    search_type = classify(input_text=final_prompt)
+
+    return search_type

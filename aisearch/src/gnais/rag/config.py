@@ -4,6 +4,7 @@ __all__ = (
     "classify",
     "extract",
     "generate",
+    "reformat",
 )
 
 import dspy
@@ -52,9 +53,20 @@ class ListInformation(BaseModel):
 class Generation(dspy.Signature):
     """Wrap generation interface"""
 
-    context: list = dspy.InputField(desc="Background information")
     input_text: str = dspy.InputField(desc="Query and instructions")
+    chat_history: list = dspy.InputField(desc="History of conversation")
+    context: list = dspy.InputField(desc="Background information")
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
 
 generate = dspy.Predict(Generation)
+
+
+class Reformat(dspy.Signature):
+    """Reformat ListInformation into valid Python dictionary"""
+
+    input_text: str = dspy.InputField()
+    result: str = dspy.OutputField(desc="Input reformatted to valid Python dictionary")
+
+
+reformat = dspy.Predict(Reformat)

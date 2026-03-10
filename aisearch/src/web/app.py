@@ -1,13 +1,11 @@
 import dspy
 import torch
-
-from gnais.config import Config
-from gnais.rag import AISearch
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
-
+from gnais.config import Config
+from gnais.rag import AISearch, classify_search, extract_keywords
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -24,15 +22,15 @@ cache = Cache(config={"CACHE_TYPE": "RedisCache"})
 cache.init_app(app)
 
 #  Bootstrapping our model
-torch.manual_seed(app.config['SEED'])
+torch.manual_seed(app.config["SEED"])
 if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(app.config['SEED'])
+    torch.cuda.manual_seed_all(app.config["SEED"])
 
 llm = None
-if app.config['MODEL_TYPE']:
+if app.config["MODEL_TYPE"]:
     llm = dspy.LM(
-        app.config['MODEL_NAME'],
-        api_key=app.config['API_KEY'],
+        app.config["MODEL_NAME"],
+        api_key=app.config["API_KEY"],
         max_tokens=10_000,
         temperature=0,
         verbose=False,
@@ -60,33 +58,36 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 # KLUDGE: We create these here so that we don't have to keep
 # re-instantiating this class on every request.
 general_search = AISearch(
-    corpus_path=app.config['CORPUS_PATH'],
-    pcorpus_path=app.config['PCORPUS_PATH'],
-    db_path=app.config['DB_PATH'],
+    corpus_path=app.config["CORPUS_PATH"],
+    pcorpus_path=app.config["PCORPUS_PATH"],
+    db_path=app.config["DB_PATH"],
 )
 
 # FIXME: There has to be a better way to do this
 targeted_search = AISearch(
-    corpus_path=app.config['CORPUS_PATH'],
-    pcorpus_path=app.config['PCORPUS_PATH'],
-    db_path=app.config['DB_PATH'],
+    corpus_path=app.config["CORPUS_PATH"],
+    pcorpus_path=app.config["PCORPUS_PATH"],
+    db_path=app.config["DB_PATH"],
     keyword_weight=0.7,
 )
 
 
-@app.route("/api/v1/search", methods=['GET'])
+def prettify(text: str):
+    return json.dumps(json.loads(text), indent=4)  # pretty print as json
+
+
+@app.route("/api/v1/search", methods=["GET"])
 @limiter.limit("300 per day")
 @cache.cached(timeout=604800)  # cache response for 1 week
 def search():
-    query = request.args.get('q')
+    query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
     if len(query) > 1000:  # limit query length
         return jsonify({"error": "Query too long"}), 400
-    task_type = general_search.classify_search(query)
+    task_type = classify_search(query)
     if task_type.get("decision") == "keyword":
-        output = targeted_search.handle(
-            general_search.extract_keywords(query).get("keywords"))
-        return output.model_dump_json(indent=4)
+        output = targeted_search.handle(extract_keywords(query).get("keywords"))
+        return prettify(output)
     output = general_search.handle(query)
-    return output.model_dump_json(indent=4)
+    return prettify(output)

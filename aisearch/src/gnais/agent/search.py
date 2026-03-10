@@ -53,18 +53,7 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def search(query: str):
-    system_prompt = """
-            You excel at addressing search query using the context you have. You do not make mistakes.
-            Extract answers to the query from the context and provide links associated with each RDF entity.
-            All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
-            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXDPublish_16339
-            Trait id: 16339
-            Dataset name: BXDPublish
-            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
-            \n
-            """
-    final_query = system_prompt + query
-    search = AISearch()
-    output = search(query=final_query).get("solution")
-    return output.model_dump_json(indent=4)
+def digest(query: str):
+    digest = Digest()
+    output = digest.handle(query)
+    return output

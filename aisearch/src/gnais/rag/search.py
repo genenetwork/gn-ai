@@ -1,5 +1,6 @@
 """This is the main module of the package"""
 
+import json
 import os
 import warnings
 
@@ -69,29 +70,33 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str):
-    general_search = AISearch(
-        corpus_path=CORPUS_PATH,
-        pcorpus_path=PCORPUS_PATH,
-        db_path=DB_PATH,
-    )
-    task_type = general_search.classify_search(query)
+    task_type = classify_search(query)
     if task_type.get("decision") == "keyword":
-        print("\nRunning keyword-ish search...\n")
-        new_query = general_search.extract_keywords(query)
-        new_query = new_query.get("keywords")
+        print("\nSettled on keyword-ish search!\n")
+        query = extract_keywords(query)
+        query = new_query.get("keywords")
         # Run a targeted search
-        targeted_search = AISearch(
+        set_search = AISearch(
             corpus_path=CORPUS_PATH,
             pcorpus_path=PCORPUS_PATH,
             db_path=DB_PATH,
             keyword_weight=0.7,
         )
-        output = targeted_search.handle(
-            new_query
-        )  # use extracted keywords instead for hybrid search
     else:
-        print("\nRunning semantic-ish search...\n")
-        output = general_search.handle(
-            query
-        )  # run a general search with user query straight
-    return output.model_dump_json(indent=4)
+        set_search = AISearch(
+            corpus_path=CORPUS_PATH,
+            pcorpus_path=PCORPUS_PATH,
+            db_path=DB_PATH,
+        )
+        print("\nSettled on semantic-ish search!\n")
+    return query, set_search
+
+
+def prettify(text: str):
+    return json.dumps(json.loads(text), indent=4) # pretty print as json
+
+
+def digest(query: str):
+    query, set_search = search(query)
+    output = set_search.handle(query)
+    return prettify(output)
