@@ -1,24 +1,10 @@
-"""This is the main module of the package"""
+"""Main module of hybrid search for GeneNetwork"""
 
-import json
 import os
-import warnings
 
-import dspy
 import torch
-from gnais.rag.rag import *
+from gnais.ragent.ragent import *
 
-warnings.filterwarnings("ignore")
-
-CORPUS_PATH = os.getenv("CORPUS_PATH")
-if CORPUS_PATH is None:
-    raise FileNotFoundError("CORPUS_PATH must be specified to find corpus")
-PCORPUS_PATH = os.getenv("PCORPUS_PATH")
-if PCORPUS_PATH is None:
-    raise FileNotFoundError("PCORPUS_PATH must be specified to read corpus")
-DB_PATH = os.getenv("DB_PATH")
-if DB_PATH is None:
-    raise FileNotFoundError("DB_PATH must be specified to access database")
 QUERY = os.getenv("QUERY")
 if QUERY is None:
     raise ValueError("QUERY must be specified for program to run")
@@ -69,30 +55,7 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def search(query: str):
-    task_type = classify_search(query)
-    if task_type.get("decision") == "keyword":
-        print("\nSettled on keyword-ish search!")
-        query = extract_keywords(query)
-        query = new_query.get("keywords")
-        # Run a targeted search
-        set_search = AISearch(
-            corpus_path=CORPUS_PATH,
-            pcorpus_path=PCORPUS_PATH,
-            db_path=DB_PATH,
-            keyword_weight=0.7,
-        )
-    else:
-        set_search = AISearch(
-            corpus_path=CORPUS_PATH,
-            pcorpus_path=PCORPUS_PATH,
-            db_path=DB_PATH,
-        )
-        print("\nSettled on semantic-ish search!")
-    return query, set_search
-
-
 def digest(query: str):
-    query, set_search = search(query)
-    output = set_search.handle(query)
+    search = HybridSearch()
+    output = search.handle(query)
     return output
