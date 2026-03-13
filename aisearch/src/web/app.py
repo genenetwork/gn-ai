@@ -1,13 +1,14 @@
+import quart_flask_patch  # noqa: F401
 import dspy
 import torch
-from flask import Flask, jsonify, request
+from quart import Quart, jsonify, request
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.rag import AISearch, classify_search, extract_keywords
 
-app = Flask(__name__)
+app = Quart(__name__)
 app.config.from_object(Config)
 
 limiter = Limiter(
