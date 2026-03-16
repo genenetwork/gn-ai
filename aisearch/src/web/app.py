@@ -76,7 +76,7 @@ targeted_search = AISearch(
 @app.route("/api/v1/search", methods=["GET"])
 @limiter.limit("300 per day")
 @cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
-def search():
+async def search():
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
@@ -84,7 +84,7 @@ def search():
         return jsonify({"error": "Query too long"}), 400
     task_type = classify_search(query)
     if task_type.get("decision") == "keyword":
-        output = targeted_search.handle(extract_keywords(query).get("keywords"))
+        output = await targeted_search.ahandle(extract_keywords(query).get("keywords"))
         return output
-    output = general_search.handle(query)
+    output = await general_search.ahandle(query)
     return output
