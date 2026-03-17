@@ -85,7 +85,8 @@ class AISearch:
         )
 
         # Init the ensemble retriever
-        metadatas = [{"source": f"Document {ind + 1}"} for ind in range(len(self.docs))]
+        metadatas = [{"source": f"Document {ind + 1}"}
+                     for ind in range(len(self.docs))]
         bm25_retriever = BM25Retriever.from_texts(
             texts=self.docs,
             metadatas=metadatas,
@@ -93,7 +94,8 @@ class AISearch:
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.db.as_retriever(search_kwargs={"k": 20}),  # might need finetuning
+                # might need finetuning
+                self.db.as_retriever(search_kwargs={"k": 20}),
                 bm25_retriever,
             ],
             weights=[1 - self.keyword_weight, self.keyword_weight],
@@ -128,7 +130,8 @@ class AISearch:
         # Read documents from a single file in corpus path
         with open(corpus_path) as f:
             aggregated = f.read()
-            collection = json.loads(aggregated)  # dictionary with key being RDF subject
+            # dictionary with key being RDF subject
+            collection = json.loads(aggregated)
 
         docs = []
         for key in tqdm(collection):
@@ -175,7 +178,7 @@ class AISearch:
                 client_settings=settings,
             )
             for i in tqdm(range(0, len(docs), chunk_size)):
-                chunk = docs[i : i + chunk_size]
+                chunk = docs[i: i + chunk_size]
                 metadatas = [
                     {"source": f"Document {ind + 1}"}
                     for ind in range(i, i + len(chunk))
@@ -262,6 +265,66 @@ class AISearch:
             "result"
         )  # transform to valid nested dictionary
         return reformatted
+
+    async def ahandle_token_stream(self, query: str):
+        """Stream tokens using DSPy streaming API.
+
+        Yields (event_type, data) tuples where:
+        - event_type: "token" | "prediction" | "error"
+        - data: the actual data (token string, Prediction object, or error string)
+        """
+        import dspy
+        from gnais.rag.config import stream_generate
+
+        # Get docs
+        loop = asyncio.get_event_loop()
+        docs = await loop.run_in_executor(None, self.ensemble_retriever.invoke, query)
+
+        # Build prompt
+        context = "\n".join([str(d) for d in docs])
+        prompt = f"""Answer using the context below.
+
+Context:
+{context}
+
+Question: {query}
+
+Provide links using namespace mappings (gn => http://rdf.genenetwork.org/v1/id, etc.)
+Trait links: https://rdf.genenetwork.org/v1/id/trait_ID -> https://cd.genenetwork.org/show_trait?trait_id=ID&dataset=DATASET
+
+Answer:"""
+
+        # Create streaming predictor
+        stream_predict = dspy.streamify(
+            stream_generate,
+            stream_listeners=[dspy.streaming.StreamListener(
+                signature_field_name="response")],
+        )
+
+        # Stream the output
+        try:
+            output_stream = stream_predict(
+                input_text=prompt,
+                chat_history=[],
+                context=docs
+            )
+
+            got_tokens = False
+            async for chunk in output_stream:
+                if isinstance(chunk, dspy.streaming.StreamResponse):
+                    got_tokens = True
+                    yield ("token", chunk.chunk)
+                elif isinstance(chunk, dspy.Prediction):
+                    # If no tokens were streamed (cached result), extract response
+                    if not got_tokens:
+                        response_text = chunk.response if hasattr(
+                            chunk, "response") else str(chunk)
+                        # Simulate token streaming by yielding words
+                        for word in response_text.split():
+                            yield ("token", word + " ")
+                    yield ("prediction", chunk)
+        except Exception as e:
+            yield ("error", str(e))
 
 
 def extract_keywords(query: str) -> str:
