@@ -1,7 +1,10 @@
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
-from quart import Quart, jsonify, request
+import json
+import asyncio
+
+from quart import Quart, jsonify, request, abort, make_response
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -73,18 +76,102 @@ targeted_search = AISearch(
 )
 
 
-@app.route("/api/v1/search", methods=["GET"])
-@limiter.limit("300 per day")
-@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
-async def search():
+class ServerSentEvent:
+    """Helper class for formatting Server-Sent Events (SSE)."""
+
+    def __init__(self, data: str, event: str = None):
+        self.data = data
+        self.event = event
+
+    def encode(self) -> str:
+        """Encode the event as a properly formatted SSE message."""
+        lines = []
+        if self.event:
+            lines.append(f"event: {self.event}")
+        for line in self.data.split('\n'):
+            lines.append(f"data: {line}")
+        lines.append('')
+        return '\n'.join(lines) + '\n'
+
+
+def format_sse_event(data: dict, event: str = None) -> str:
+    """Format a dictionary as an SSE event string."""
+    return ServerSentEvent(data=json.dumps(data), event=event).encode()
+
+
+@app.route("/api/v1/search/stream", methods=["GET"])
+@limiter.limit("100 per day")
+async def search_stream():
+    """Stream search results with intermediate status updates via SSE."""
+    if "text/event-stream" not in request.accept_mimetypes:
+        return jsonify({"error": "Missing query parameter 'q'"}), 400
+
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
-    if len(query) > 1000:  # limit query length
+
+    if len(query) > 500:
         return jsonify({"error": "Query too long"}), 400
-    task_type = classify_search(query)
-    if task_type.get("decision") == "keyword":
-        output = await targeted_search.ahandle(extract_keywords(query).get("keywords"))
-        return output
-    output = await general_search.ahandle(query)
-    return output
+
+    async def generate_stream():
+        """Async generator that yields SSE events with status updates and token streaming."""
+        loop = asyncio.get_event_loop()
+
+        # Status: Start
+        yield format_sse_event({"type": "status", "message": "Starting search...", "step": "start"}, event="status")
+
+        # Step 1: Classify search type
+        yield format_sse_event({"type": "status", "message": "Classifying search type...", "step": "classify"}, event="status")
+        task_type = await loop.run_in_executor(None, classify_search, query)
+        is_keyword = task_type.get("decision") == "keyword"
+        yield format_sse_event({"type": "status", "message": f"Search classified as: {'keyword' if is_keyword else 'semantic'}", "step": "classified"}, event="status")
+
+        # Step 2: Extract keywords if needed
+        if is_keyword:
+            yield format_sse_event({"type": "status", "message": "Extracting keywords...", "step": "extract"}, event="status")
+            keywords_result = await loop.run_in_executor(None, extract_keywords, query)
+            processed_query = keywords_result.get("keywords", query)
+            yield format_sse_event({"type": "status", "message": f"Keywords: {processed_query}", "step": "extracted"}, event="status")
+        else:
+            processed_query = query
+
+        # Step 3: Retrieve documents
+        yield format_sse_event({"type": "status", "message": "Retrieving relevant documents...", "step": "retrieve"}, event="status")
+        search_instance = targeted_search if is_keyword else general_search
+
+        # Step 4: Generate response with token streaming
+        yield format_sse_event({"type": "status", "message": "Generating response...", "step": "generate"}, event="status")
+
+        try:
+            # Use token streaming
+            token_index = 0
+            full_response = []
+
+            async for event_type, data in search_instance.ahandle_token_stream(processed_query):
+                if event_type == "token":
+                    yield format_sse_event({"type": "token", "content": data, "index": token_index}, event="token")
+                    full_response.append(data)
+                    token_index += 1
+                    await asyncio.sleep(0)
+                elif event_type == "prediction":
+                    # Final prediction received
+                    pass
+                elif event_type == "error":
+                    yield format_sse_event({"type": "error", "message": data}, event="error")
+                    return
+
+            yield format_sse_event({"type": "status", "message": "Response generated", "step": "complete"}, event="status")
+            yield format_sse_event({"type": "result", "data": "".join(full_response)}, event="result")
+        except Exception as e:
+            yield format_sse_event({"type": "error", "message": str(e)}, event="error")
+
+    response = await make_response(
+        generate_stream(),
+        {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'X-Accel-Buffering': 'no',
+        },
+    )
+    response.timeout = None
+    return response
