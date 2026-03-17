@@ -5,6 +5,7 @@ __all__ = (
     "extract",
     "generate",
     "reformat",
+    "stream_generate",
 )
 
 import dspy
@@ -13,16 +14,18 @@ from pydantic import BaseModel, Field
 
 
 class Classification(dspy.Signature):
+    """Classify search type"""
     input_text: str = dspy.InputField()
-    decision: str = dspy.OutputField(desc='"keyword" or "semantic"')
+    decision: str = dspy.OutputField(desc='Either "keyword" or "semantic"')
 
 
 classify = dspy.Predict(Classification)
 
 
 class Extraction(dspy.Signature):
+    """Extract keywords from query"""
     input_text: str = dspy.InputField()
-    keywords: str = dspy.OutputField()
+    keywords: str = dspy.OutputField(desc="Space-separated keywords")
 
 
 extract = dspy.Predict(Extraction)
@@ -70,3 +73,16 @@ class Reformat(dspy.Signature):
 
 
 reformat = dspy.Predict(Reformat)
+
+
+class StreamingGeneration(dspy.Signature):
+    """Simple generation for streaming - must have string output"""
+
+    input_text: str = dspy.InputField(desc="Query with instructions")
+    chat_history: list = dspy.InputField(desc="Previous messages")
+    context: list = dspy.InputField(desc="Retrieved documents")
+    response: str = dspy.OutputField(desc="Answer to the query")
+
+
+# For token-level streaming
+stream_generate = dspy.Predict(StreamingGeneration)
