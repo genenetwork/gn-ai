@@ -73,7 +73,7 @@ class SPARQLGenerator(dspy.Signature):
     classes_info: str = dspy.InputField(desc="Mapping for available classes")
     properties_info: str = dspy.InputField(desc="Mapping for available properties")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Max 50 valid SPARQL SELECT queries that can retrieve any relevant information. Do not assume perfect match of entity (subject, object). Queries should use class and property information to try different variations of the keywords in the query and find successful queries."
+        desc="At least 100 valid SPARQL SELECT queries that can retrieve any relevant information. Try different variations of the keywords in the query and find at least 30 successful queries."
     )
 
 
@@ -86,7 +86,7 @@ class AnswerGenerator(dspy.Signature):
     original_query: str = dspy.InputField(desc="Query provided")
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
-    feedback: str = dspy.OutputField(desc="System response to the query")
+    feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
 
 generate_response = dspy.Predict(AnswerGenerator)
