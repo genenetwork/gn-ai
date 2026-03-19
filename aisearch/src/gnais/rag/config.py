@@ -1,12 +1,5 @@
 """This module provides different constructs to interact with the LLM"""
 
-__all__ = (
-    "classify",
-    "extract",
-    "generate",
-    "reformat",
-)
-
 import dspy
 import torch
 from pydantic import BaseModel, Field
@@ -70,3 +63,30 @@ class Reformat(dspy.Signature):
 
 
 reformat = dspy.Predict(Reformat)
+
+
+class SPARQLGenerator(dspy.Signature):
+    """Generate a SPARQL SELECT query from a natural language question.
+    Use the provided schema to construct valid queries."""
+
+    original_query: str = dspy.InputField(desc="Query provided")
+    classes_info: str = dspy.InputField(desc="Mapping for available classes")
+    properties_info: str = dspy.InputField(desc="Mapping for available properties")
+    sparql_queries: list[str] = dspy.OutputField(
+        desc="Max 50 valid SPARQL SELECT queries that can retrieve any relevant information. Do not assume perfect match of entity (subject, object). Queries should use class and property information to try different variations of the keywords in the query and find successful queries."
+    )
+
+
+generate_sparql = dspy.Predict(SPARQLGenerator)
+
+
+class AnswerGenerator(dspy.Signature):
+    """Generate a natural language answer from SPARQL query results."""
+
+    original_query: str = dspy.InputField(desc="Query provided")
+    sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
+    chat_history: list = dspy.InputField(desc="History of conversation")
+    feedback: str = dspy.OutputField(desc="System response to the query")
+
+
+generate_response = dspy.Predict(AnswerGenerator)
