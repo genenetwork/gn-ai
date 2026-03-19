@@ -8,7 +8,8 @@ from typing import Any
 
 import dspy
 from gnais.agent.search import digest as agent_digest
-from gnais.rag.search import digest as rag_digest
+from gnais.rag.rag_search import digest as rag_digest
+from gnais.rag.grag_search import digest as grag_digest
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -54,6 +55,11 @@ class HybridSearch:
         print(f"\nRAG run!\nTemporary result: {response}")
         return {"messages": [response]}
 
+    def grag(self, state: HybridState) -> dict:
+        response = self.run_node(state, grag_digest)
+        print(f"\nGraphRAG run!\nTemporary result: {response}")
+        return {"messages": [response]}
+
     def agent(self, state: HybridState) -> dict:
         response = self.run_node(state, agent_digest)
         print(f"\nAgent run!\nTemporary result: {response}")
@@ -69,11 +75,14 @@ class HybridSearch:
     def initialize_graph(self) -> Any:
         graph_builder = StateGraph(HybridState)
         graph_builder.add_node("rag", self.rag)
+        graph_builder.add_node("grag", self.grag)
         graph_builder.add_node("agent", self.agent)
         graph_builder.add_node("augment", self.augment)
         graph_builder.add_edge(START, "rag")
+        graph_builder.add_edge(START, "grag")
         graph_builder.add_edge(START, "agent")
         graph_builder.add_edge("rag", "augment")
+        graph_builder.add_edge("grag", "augment")
         graph_builder.add_edge("agent", "augment")
         graph_builder.add_edge("augment", END)
         graph = graph_builder.compile(checkpointer=self.memory)
