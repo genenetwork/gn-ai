@@ -86,7 +86,7 @@ class AISearch:
             classes_info=self.rdf_classes,
             properties_info=self.rdf_properties,
         )
-        sparql_queries = query_result.get("sparql_query")
+        sparql_queries = query_result.get("sparql_queries")
         try:
             sparql = SPARQLWrapper(self.endpoint_url)
             sparql.setReturnFormat(JSON)
@@ -94,7 +94,7 @@ class AISearch:
             for sparql_query in sparql_queries:
                 sparql.setQuery(sparql_query)
                 results = sparql.queryAndConvert()
-                results = str(results)
+                results = str(results["results"]["bindings"])
                 final_results.append(results)
             final_results = str(final_results)
         except Exception as e:
