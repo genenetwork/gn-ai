@@ -10,6 +10,8 @@ from typing import Any
 
 import dspy
 from gnais.rag.config import ListInformation, reformat
+from gnais.utils import fetch_schema
+from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
@@ -19,39 +21,19 @@ from typing_extensions import Annotated, TypedDict
 
 THREAD = uuid.uuid4().hex[:8]
 
-TTL_PATH = os.getenv("TTL_PATH")
-if TTL_PATH is None:
-    raise FileNotFoundError(
-        "TTL_PATH must be specified to extract RDF schema and build queries"
+ENDPOINT_URL = os.getenv("ENDPOINT_URL")
+if ENDPOINT_URL is None:
+    raise ValueError(
+        "ENDPOINT_URL must be specified to extract RDF schema and build queries"
     )
-
-
-def extract_schema(ttl_path: str) -> tuple[list, list]:
-    ttl_files = [
-        os.path.join(ttl_path, ttl) for ttl in os.listdir(ttl_path) if "ttl" in ttl
-    ]
-    prefixes = []
-    predicates = []
-    for ttl in ttl_files:
-        with open(ttl) as f:
-            contents = f.readlines()
-            for content in contents:
-                content = content.strip()
-                if content.startswith("@") and content not in prefixes:
-                    prefixes.append(content)
-                elif len(content) != 0:
-                    predicate = content.split()[1]
-                    if predicate not in predicates:
-                        predicates.append(predicate)
-    return prefixes, predicates
 
 
 class QueryTranslation(dspy.Signature):
     original_query: str = dspy.InputField()
-    rdf_prefixes: list[str] = dspy.InputField()
-    triple_predicates: list[str] = dspy.InputField()
+    rdf_classes: str = dspy.InputField()
+    rdf_properties: str = dspy.InputField()
     translated_query: str = dspy.OutputField(
-        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema inferred from RDF prefixes and triple predicates"
+        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema inferred from RDF schema"
     )
 
 
@@ -59,18 +41,14 @@ translate_query = dspy.Predict(QueryTranslation)
 
 
 def fetch_data(query: str) -> Any:
-    sparql = SPARQLWrapper("https://rdf.genenetwork.org/sparql/")
-    sparql.setReturnFormat(JSON)
-    if Path(f"{TTL_PATH}/schema.txt").exists():
-        with open(f"{TTL_PATH}/schema.txt") as f:
-            prefixes, predicates = json.loads(f.read())
-    else:
-        prefixes, predicates = extract_schema(TTL_PATH)
-        with open(f"{TTL_PATH}/schema.txt", "w") as f:
-            f.write(json.dumps([prefixes, predicates]))
+    rdf_classes, rdf_properties = fetch_schema_graph(ENDPOINT_URL)
     sparql_query = translate_query(
-        original_query=query, rdf_prefixes=prefixes, triple_predicates=predicates
+        original_query=query,
+        rdf_classes=rdf_classes,
+        rdf_properties=rdf_properties,
     ).get("translated_query")
+    sparql = SPARQLWrapper(ENDPOINT_URL)
+    sparql.setReturnFormat(JSON)
     sparql.setQuery(sparql_query)
     return sparql.queryAndConvert()
 
