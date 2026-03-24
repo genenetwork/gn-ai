@@ -69,11 +69,11 @@ class SPARQLGenerator(dspy.Signature):
     """Generate a SPARQL SELECT query from a natural language question.
     Use the provided schema to construct valid queries."""
 
-    original_query: str = dspy.InputField(desc="Query provided")
+    original_query: str = dspy.InputField(desc="User query")
     classes_info: str = dspy.InputField(desc="Mapping for available classes")
     properties_info: str = dspy.InputField(desc="Mapping for available properties")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="At least 100 valid SPARQL SELECT queries that can retrieve any relevant information. Try different variations of the keywords in the query and find at least 30 successful queries."
+        desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
     )
 
 
