@@ -72,7 +72,7 @@ def search(query: str):
     if task_type.get("decision") == "keyword":
         print("\nSettled on keyword-ish search!")
         query = extract_keywords(query)
-        query = new_query.get("keywords")
+        query = query.get("keywords")
         # Run a targeted search
         set_search = AISearch(
             corpus_path=CORPUS_PATH,
