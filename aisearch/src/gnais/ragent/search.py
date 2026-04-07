@@ -1,9 +1,8 @@
 """Main module of hybrid search for GeneNetwork"""
-
 import os
 
 import torch
-from gnais.ragent.ragent import *
+from gnais.ragent import HybridSearch
 
 QUERY = os.getenv("QUERY")
 if QUERY is None:
