@@ -49,27 +49,27 @@ class HybridSearch:
         self.memory = MemorySaver()
         self.graph = self.initialize_graph()
 
-    def run_node(self, state: HybridState, func: Any) -> dict:
+    async def run_node(self, state: HybridState, func: Any) -> dict:
         messages = deepcopy(state.get("messages"))
         if len(messages) <= 2:  # only for first queries
             query = messages[-1].content
         else:
             query = str(messages)  # provide access to memory for subsequent queries
-        response = func(query)
+        response = await func(query)
         return response
 
-    def rag(self, state: HybridState) -> dict:
-        response = self.run_node(state, rag_digest)
+    async def rag(self, state: HybridState) -> dict:
+        response = await self.run_node(state, rag_digest)
         print(f"\nRAG run!\nTemporary result: {response}")
         return {"messages": [response]}
 
-    def grag(self, state: HybridState) -> dict:
-        response = self.run_node(state, grag_digest)
+    async def grag(self, state: HybridState) -> dict:
+        response = await self.run_node(state, grag_digest)
         print(f"\nGraphRAG run!\nTemporary result: {response}")
         return {"messages": [response]}
 
-    def agent(self, state: HybridState) -> dict:
-        response = self.run_node(state, agent_digest)
+    async def agent(self, state: HybridState) -> dict:
+        response = await self.run_node(state, agent_digest)
         print(f"\nAgent run!\nTemporary result: {response}")
         return {"messages": [response]}
 
@@ -103,8 +103,8 @@ class HybridSearch:
         )
         return result
 
-    def handle(self, query: str) -> str:
-        result = asyncio.run(self.invoke_graph(query))
+    async def handle(self, query: str) -> str:
+        result = await self.invoke_graph(query)
         result = result.get("messages")[-1].content
         print(f"\nRun of hybrid search completed!\nFinal result: {result}")
         return result
