@@ -37,3 +37,7 @@ class Config:
     API_KEY = os.environ.get("API_KEY")
     if MODEL_TYPE and API_KEY is None:
         raise RuntimeError("API_KEY is not set")
+
+    SPARQL_ENDPOINT = os.environ.get("SPARQL_ENDPOINT")
+    if SPARQL_ENDPOINT is None:
+        raise RuntimeError("SPARQL_ENDPOINT is not set")
