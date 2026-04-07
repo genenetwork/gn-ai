@@ -127,8 +127,8 @@ class Digest:
         )
         return result
 
-    def handle(self, query: str) -> str:
-        result = asyncio.run(self.call_graph(query))
+    async def handle(self, query: str) -> str:
+        result = await self.call_graph(query)
         result = result.get("messages")[-1].content
         reformatted = reformat(input_text=result).get(
             "result"
