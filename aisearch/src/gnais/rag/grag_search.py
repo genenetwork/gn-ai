@@ -7,9 +7,9 @@ from gnais.rag.grag import *
 
 warnings.filterwarnings("ignore")
 
-ENDPOINT_URL = os.getenv("ENDPOINT_URL")
-if ENDPOINT_URL is None:
-    raise ValueError("ENDPOINT_URL must be specified to access database")
+SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+if SPARQL_ENDPOINT is None:
+    raise ValueError("SPARQL_ENDPOINT must be specified to access database")
 QUERY = os.getenv("QUERY")
 if QUERY is None:
     raise ValueError("QUERY must be specified for program to run")
@@ -58,7 +58,7 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str):
-    set_search = AISearch(endpoint_url=ENDPOINT_URL, llm=llm)
+    set_search = AISearch(endpoint_url=SPARQL_ENDPOINT, llm=llm)
     return query, set_search
 
 
