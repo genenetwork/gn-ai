@@ -1,11 +1,9 @@
 """This is the main module of the package using agent tool calling"""
 
+import asyncio
 import torch
 from gnais.agent.agent import *
 
-QUERY = os.getenv("QUERY")
-if QUERY is None:
-    raise ValueError("QUERY must be specified for program to run")
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
@@ -53,7 +51,7 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def digest(query: str):
+async def digest(query: str):
     digest = Digest()
-    output = digest.handle(query)
+    output = await digest.handle(query)
     return output

@@ -1,6 +1,7 @@
 import os
 import warnings
 
+import asyncio
 import dspy
 import torch
 from gnais.rag.grag import *
@@ -10,9 +11,7 @@ warnings.filterwarnings("ignore")
 SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
 if SPARQL_ENDPOINT is None:
     raise ValueError("SPARQL_ENDPOINT must be specified to access database")
-QUERY = os.getenv("QUERY")
-if QUERY is None:
-    raise ValueError("QUERY must be specified for program to run")
+
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
@@ -62,7 +61,7 @@ def search(query: str):
     return query, set_search
 
 
-def digest(query: str):
+async def digest(query: str):
     query, set_search = search(query)
-    output = set_search.handle(query)
+    output = await set_search.handle(query)
     return output
