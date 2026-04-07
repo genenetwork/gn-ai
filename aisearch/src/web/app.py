@@ -6,7 +6,7 @@ from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
-from gnais.rag import AISearch, classify_search, extract_keywords
+from gnais.ragent import HybridSearch
 
 app = Quart(__name__)
 app.config.from_object(Config)
@@ -56,35 +56,19 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-# KLUDGE: We create these here so that we don't have to keep
+# KLUDGE: We create this here so that we don't have to keep
 # re-instantiating this class on every request.
-general_search = AISearch(
-    corpus_path=app.config["CORPUS_PATH"],
-    pcorpus_path=app.config["PCORPUS_PATH"],
-    db_path=app.config["DB_PATH"],
-)
-
-# FIXME: There has to be a better way to do this
-targeted_search = AISearch(
-    corpus_path=app.config["CORPUS_PATH"],
-    pcorpus_path=app.config["PCORPUS_PATH"],
-    db_path=app.config["DB_PATH"],
-    keyword_weight=0.7,
-)
+hybrid_search = HybridSearch()
 
 
 @app.route("/api/v1/search", methods=["GET"])
 @limiter.limit("300 per day")
 @cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
-def search():
+async def search():
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
     if len(query) > 1000:  # limit query length
         return jsonify({"error": "Query too long"}), 400
-    task_type = classify_search(query)
-    if task_type.get("decision") == "keyword":
-        output = targeted_search.handle(extract_keywords(query).get("keywords"))
-        return output
-    output = general_search.handle(query)
+    output = await hybrid_search.handle(query)
     return output
