@@ -4,9 +4,6 @@ import os
 import torch
 from gnais.ragent import HybridSearch
 
-QUERY = os.getenv("QUERY")
-if QUERY is None:
-    raise ValueError("QUERY must be specified for program to run")
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
