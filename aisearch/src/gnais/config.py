@@ -41,3 +41,7 @@ class Config:
     SPARQL_ENDPOINT = os.environ.get("SPARQL_ENDPOINT")
     if SPARQL_ENDPOINT is None:
         raise RuntimeError("SPARQL_ENDPOINT is not set")
+
+    AUTH_SERVER_URL = os.environ.get("AUTH_SERVER_URL")
+    if AUTH_SERVER_URL is None:
+        raise RuntimeError("AUTH_SERVER_URL is not set")
