@@ -63,9 +63,9 @@ hybrid_search = HybridSearch()
 
 
 @app.route("/api/v1/search", methods=["GET"])
-@limiter.limit("300 per day")
-@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
 @require_token
+@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
+@limiter.limit("300 per day")
 async def search(auth_token=None):
     query = request.args.get("q")
     if not query:
