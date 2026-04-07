@@ -1,5 +1,6 @@
 """This is the main module of the package"""
 
+import asyncio
 import json
 import os
 import warnings
@@ -19,9 +20,6 @@ if PCORPUS_PATH is None:
 DB_PATH = os.getenv("DB_PATH")
 if DB_PATH is None:
     raise FileNotFoundError("DB_PATH must be specified to access database")
-QUERY = os.getenv("QUERY")
-if QUERY is None:
-    raise ValueError("QUERY must be specified for program to run")
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
@@ -92,7 +90,7 @@ def search(query: str):
     return query, set_search
 
 
-def digest(query: str):
+async def digest(query: str):
     query, set_search = search(query)
-    output = set_search.handle(query)
+    output = await set_search.handle(query)
     return output
