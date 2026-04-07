@@ -4,7 +4,7 @@ This module provides JWT token validation using JWKS from the auth server.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 from typing import Optional
 from urllib.parse import urljoin
@@ -16,9 +16,6 @@ from quart import request, jsonify, current_app
 
 logger = logging.getLogger(__name__)
 
-# Cache for JWKS
-_jwks_cache: Optional[dict] = None
-
 
 class TokenValidationError(Exception):
     """Raised when token validation fails."""
@@ -26,67 +23,30 @@ class TokenValidationError(Exception):
 
 
 def fetch_jwks(auth_server_url: str, timeout: int = 30) -> KeySet:
-    """Fetch JSON Web Keys from the auth server.
-
-    Args:
-        auth_server_url: Base URL of the auth server
-        timeout: Request timeout in seconds
-
-    Returns:
-        KeySet containing the auth server's public keys
-
-    Raises:
-        TokenValidationError: If JWKS cannot be fetched
-    """
+    """Fetch JSON Web Keys from the auth server."""
     jwks_uri = urljoin(auth_server_url, "auth/public-jwks")
-    try:
-        response = requests.get(jwks_uri, timeout=timeout)
-        response.raise_for_status()
-        jwks_data = response.json()
-        keys = [JsonWebKey.import_key(key) for key in jwks_data.get(
-            "jwks", {}).get("keys", [])]
-        if not keys:
-            raise TokenValidationError("No keys found in JWKS response")
-        return KeySet(keys)
-    except requests.RequestException as exc:
-        logger.error("Failed to fetch JWKS from %s", jwks_uri, exc_info=True)
-        raise TokenValidationError(f"Failed to fetch JWKS: {exc}") from exc
-    except (KeyError, ValueError) as exc:
-        logger.error("Invalid JWKS response format", exc_info=True)
-        raise TokenValidationError(f"Invalid JWKS response: {exc}") from exc
+    response = requests.get(jwks_uri, timeout=timeout)
+    response.raise_for_status()
+    jwks_data = response.json()
+    keys = [JsonWebKey.import_key(key) for key in jwks_data.get(
+        "jwks", {}).get("keys", [])]
+    if not keys:
+        raise TokenValidationError("No keys found in JWKS response")
+    return KeySet(keys)
 
 
-def get_cached_jwks(auth_server_url: str, cache_ttl_hours: int = 2) -> KeySet:
-    """Get cached JWKS, fetching if necessary.
-
-    Args:
-        auth_server_url: Base URL of the auth server
-        cache_ttl_hours: How long to cache JWKS before refreshing
-
-    Returns:
-        KeySet containing the auth server's public keys
-    """
-    global _jwks_cache
-
-    now = datetime.now().timestamp()
-
-    # Check if we have valid cached JWKS
-    if _jwks_cache is not None:
-        last_updated = _jwks_cache.get("last_updated", 0)
-        if (now - last_updated) < timedelta(hours=cache_ttl_hours).seconds:
-            logger.debug("Using cached JWKS")
-            return _jwks_cache["jwks"]
-
-        logger.debug("JWKS cache expired, refreshing")
-
-    # Fetch fresh JWKS
+def get_cached_jwks(auth_server_url: str) -> KeySet:
+    """Get cached JWKS from Redis, fetching if necessary."""
+    cache = current_app.extensions["cache"]
+    cached = cache.get("auth_server_jwks")
+    
+    if cached is not None:
+        return KeySet([JsonWebKey.import_key(key) for key in cached])
+    
+    # Fetch and cache for 2 hours
     jwks = fetch_jwks(auth_server_url)
-    _jwks_cache = {
-        "jwks": jwks,
-        "last_updated": now
-    }
-    logger.info("Fetched and cached new JWKS from auth server")
-
+    key_data = [key.export() for key in jwks.keys]
+    cache.set("auth_server_jwks", key_data, timeout=7200)
     return jwks
 
 
