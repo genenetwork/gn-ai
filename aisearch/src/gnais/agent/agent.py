@@ -21,10 +21,10 @@ from typing_extensions import Annotated, TypedDict
 
 THREAD = uuid.uuid4().hex[:8]
 
-ENDPOINT_URL = os.getenv("ENDPOINT_URL")
-if ENDPOINT_URL is None:
+SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+if SPARQL_ENDPOINT is None:
     raise ValueError(
-        "ENDPOINT_URL must be specified to extract RDF schema and build queries"
+        "SPARQL_ENDPOINT must be specified to extract RDF schema and build queries"
     )
 
 
@@ -41,13 +41,13 @@ translate_query = dspy.Predict(QueryTranslation)
 
 
 def fetch_data(query: str) -> Any:
-    rdf_classes, rdf_properties = fetch_schema_graph(ENDPOINT_URL)
+    rdf_classes, rdf_properties = fetch_schema_graph(SPARQL_ENDPOINT)
     sparql_query = translate_query(
         original_query=query,
         rdf_classes=rdf_classes,
         rdf_properties=rdf_properties,
     ).get("translated_query")
-    sparql = SPARQLWrapper(ENDPOINT_URL)
+    sparql = SPARQLWrapper(SPARQL_ENDPOINT)
     sparql.setReturnFormat(JSON)
     sparql.setQuery(sparql_query)
     return sparql.queryAndConvert()
