@@ -1,7 +1,6 @@
 import os
 import warnings
 
-import asyncio
 import dspy
 import torch
 from gnais.rag.grag import *

@@ -1,6 +1,5 @@
 """This is the main module of the package using agent tool calling"""
 
-import asyncio
 import torch
 from gnais.agent.agent import *
 
