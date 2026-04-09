@@ -27,6 +27,7 @@ class Information(BaseModel):
     answer: str = Field(
         description="Specific point addressing the query from the context"
     )
+    data: dict[str, float] = Field(description="Measurements or statistics fetched from the context. Do not hallucinate data. If no data is available, say NA")
     links: list[str] = Field(
         description="All links associated to RDF entities related to the point"
     )
@@ -40,6 +41,9 @@ class ListInformation(BaseModel):
     )
     final_answer: str = Field(
         description="Synthesized and comprehensive answer using detailed answers"
+    )
+    data_table: str = Field(
+        description="Data in detailed answers regrouped and properly formatted as a table for comparison by user"
     )
 
 
@@ -56,10 +60,37 @@ generate = dspy.Predict(Generation)
 
 
 class Reformat(dspy.Signature):
-    """Reformat ListInformation into valid Python dictionary"""
+    """Reformat ListInformation into valid Markdown Key-Value format using header-based hierarchy"""
 
     input_text: str = dspy.InputField()
-    result: str = dspy.OutputField(desc="Input reformatted to valid Python dictionary")
+    result: str = dspy.OutputField(
+        desc="""
+        List of informations formatted as Markdown Key-Value using header-based hierarchy defined as below:
+        # Answers
+        ## Answer 1
+        - **Text:** {text}
+        - **Associated data:** {data}
+        - **Trait link 1:** {link}
+        - **Trait link 2:** {link}
+
+        ## Answer 2
+        - **Text:** {text}
+        - **Associated data:** {data}
+        - **Trait link 1:** {link}
+        - **Trait link 2:** {link}
+
+        ## Final answer
+        - **Text:** {text}
+
+        ## Data table
+        |{variable 1}|{variable 2}|
+        ---------------------------
+        |{value 1}|{value 1}|
+        |{value 2}|{value 2}|
+
+        Do not include links in data table.
+        """
+    )
 
 
 reformat = dspy.Predict(Reformat)
