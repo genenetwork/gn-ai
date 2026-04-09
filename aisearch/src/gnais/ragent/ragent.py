@@ -28,10 +28,11 @@ THREAD = uuid.uuid4().hex[:8]
 
 
 class Synthesis(dspy.Signature):
+    """Produce a detailed synthesis of all generations as valid Markdown Key-Value format using header-based hierarchy"""
     original_query: str = dspy.InputField()
     all_generation: list[BaseMessage] = dspy.InputField()
     final_synthesis: str = dspy.OutputField(
-        desc="Final response from the system formatted as neat JSON dictionary with indent"
+        desc="Final response from the system formatted as neat Markdown Key-Value using header-based hierarchy"
     )
 
 

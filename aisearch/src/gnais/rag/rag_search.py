@@ -1,7 +1,5 @@
 """This is the main module of the package"""
 
-import asyncio
-import json
 import os
 import warnings
 
@@ -64,7 +62,7 @@ else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
 
-dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
+dspy.configure(lm=llm)
 
 
 def search(query: str):
