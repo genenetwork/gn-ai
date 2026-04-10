@@ -41,7 +41,7 @@ translate_query = dspy.Predict(QueryTranslation)
 
 
 def fetch_data(query: str) -> Any:
-    rdf_classes, rdf_properties = fetch_schema_graph(SPARQL_ENDPOINT)
+    rdf_classes, rdf_properties = fetch_schema(SPARQL_ENDPOINT)
     sparql_query = translate_query(
         original_query=query,
         rdf_classes=rdf_classes,
