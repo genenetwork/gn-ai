@@ -1,7 +1,9 @@
+import os
+import json
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
-from quart import Quart, jsonify, request
+from quart import Quart, jsonify, request, render_template, Response
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -10,6 +12,10 @@ from gnais.ragent import HybridSearch
 
 app = Quart(__name__)
 app.config.from_object(Config)
+
+# Set up template directory
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+app.template_folder = template_dir
 
 limiter = Limiter(
     get_remote_address,
@@ -39,7 +45,6 @@ if app.config["MODEL_TYPE"]:
 else:
     llm = dspy.LM(
         model=f"openai/{app.config['MODEL_NAME']}",
-        # FIXME: Make this configurable
         api_base="http://localhost:7501/v1",
         api_key="local",
         model_type="chat",
@@ -50,31 +55,44 @@ else:
         verbose=False,
     )
 
-
 # KLUDGE: If you use a small local model, there is a very high
 # likelihood that JSON validation will fail.
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
-
 
 # KLUDGE: We create this here so that we don't have to keep
 # re-instantiating this class on every request.
 hybrid_search = HybridSearch()
 
+@app.route("/")
+async def index():
+    """Serve the AI search web interface."""
+    return await render_template("index.html")
 
 @app.route("/api/v1/search", methods=["GET"])
-@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
+@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))
 @limiter.limit("300 per day")
-async def search(auth_token=None):
+async def search():
+    """Search endpoint - no authentication required."""
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
-    if len(query) > 1000:  # limit query length
+    if len(query) > 1000:
         return jsonify({"error": "Query too long"}), 400
 
-    # Log the authenticated user (optional - for audit purposes)
-    user_id = get_user_id(auth_token)
-    if user_id:
-        app.logger.info("Search request from user: %s", user_id)
+    # Get the raw output from hybrid search (it's a JSON string)
+    raw_output = await hybrid_search.handle(query)
 
-    output = await hybrid_search.handle(query)
-    return output
+    # Try to parse it as JSON
+    try:
+        parsed_output = json.loads(raw_output)
+        return jsonify(parsed_output)
+    except json.JSONDecodeError:
+        # If it's not valid JSON, wrap it in an error response
+        return jsonify({
+            "status": "error",
+            "error": "Invalid JSON response from model",
+            "raw_response": raw_output[:500]  # First 500 chars
+        }), 500
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5001, debug=True)
