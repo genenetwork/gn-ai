@@ -6,33 +6,69 @@ __all__ = (
     "synthesize",
     "HybridState",
     "THREAD",
+    "SearchResult",
 )
 
 import asyncio
 import uuid
+import json
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
+from typing_extensions import Annotated, TypedDict
 
 import dspy
-from gnais.agent.search import digest as agent_digest
-from gnais.rag.rag_search import digest as rag_digest
-from gnais.rag.grag_search import digest as grag_digest
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
+
+from gnais.agent.search import digest as agent_digest
+from gnais.rag.rag_search import digest as rag_digest
+from gnais.rag.grag_search import digest as grag_digest
 
 THREAD = uuid.uuid4().hex[:8]
 
 
+class SearchResult(TypedDict):
+    """Standardized search result schema with flexible results array"""
+    query: str
+    status: str  # "success" or "partial_success"
+    summary: str
+    results: list[dict]  # Each result has: type, name, description, url, extra
+    note: str
+
+
 class Synthesis(dspy.Signature):
-    """Produce a detailed synthesis of all generations as valid Markdown Key-Value format using header-based hierarchy"""
+    """Synthesize the final response from all search components.
+
+    Output must be a valid JSON object with this exact structure:
+    {
+      "query": "the original user query",
+      "status": "success" or "partial_success",
+      "summary": "overall summary of findings",
+      "results": [
+        {
+          "type": "gene" | "trait" | "dataset" | "phenotype" | "locus" | etc,
+          "name": "display name of the resource",
+          "description": "description of relevance to query",
+          "url": "URL to the resource page",
+          "extra": "optional additional context like evidence, IDs, etc."
+        }
+      ],
+      "note": "optional note about data limitations or errors"
+    }
+
+    Guidelines for results:
+    - Use consistent "type" values: "gene", "trait", "dataset", "phenotype", "locus", etc.
+    - Always include URL when available
+    - Put specific IDs or evidence in "extra" field
+    - Group similar items together in the array
+    """
     original_query: str = dspy.InputField()
     all_generation: list[BaseMessage] = dspy.InputField()
-    final_synthesis: str = dspy.OutputField(
-        desc="Final response from the system formatted as neat Markdown Key-Value using header-based hierarchy"
+    final_synthesis: SearchResult = dspy.OutputField(
+        desc="Final response as a JSON object following the SearchResult schema exactly"
     )
 
 
@@ -55,7 +91,8 @@ class HybridSearch:
         if len(messages) <= 2:  # only for first queries
             query = messages[-1].content
         else:
-            query = str(messages)  # provide access to memory for subsequent queries
+            # provide access to memory for subsequent queries
+            query = str(messages)
         response = await func(query)
         return response
 
@@ -76,10 +113,14 @@ class HybridSearch:
 
     def augment(self, state: HybridState) -> dict:
         messages = deepcopy(state.get("messages"))
-        original_query = messages[-3].content # always take query that was used for the most recent run
-        response = synthesize(original_query=original_query, all_generation=messages)
-        response = response.get("final_synthesis")
-        return {"messages": [response]}
+        # always take query that was used for the most recent run
+        original_query = messages[-3].content
+        response = synthesize(
+            original_query=original_query, all_generation=messages)
+        # The response is now a SearchResult dict, convert to JSON string
+        result_dict = response.get("final_synthesis")
+        response_json = json.dumps(result_dict, indent=2)
+        return {"messages": [response_json]}
 
     def initialize_graph(self) -> Any:
         graph_builder = StateGraph(HybridState)
