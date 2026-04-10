@@ -7,7 +7,6 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.ragent import HybridSearch
-from web.auth import require_token, get_user_id
 
 app = Quart(__name__)
 app.config.from_object(Config)
@@ -63,7 +62,6 @@ hybrid_search = HybridSearch()
 
 
 @app.route("/api/v1/search", methods=["GET"])
-@require_token
 @cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))  # cache response for 1 week
 @limiter.limit("300 per day")
 async def search(auth_token=None):
