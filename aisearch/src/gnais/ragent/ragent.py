@@ -15,20 +15,18 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
-from typing_extensions import Annotated, TypedDict
 
 import dspy
+from gnais.agent.search import digest as agent_digest
+from gnais.rag.rag_search import digest as rag_digest
+from gnais.rag.grag_search import digest as grag_digest
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
-
-from gnais.agent.search import digest as agent_digest
-from gnais.rag.rag_search import digest as rag_digest
-from gnais.rag.grag_search import digest as grag_digest
+from typing_extensions import Annotated, TypedDict
 
 THREAD = uuid.uuid4().hex[:8]
-
 
 class SearchResult(TypedDict):
     """Standardized search result schema with flexible results array"""
@@ -68,7 +66,7 @@ class Synthesis(dspy.Signature):
     original_query: str = dspy.InputField()
     all_generation: list[BaseMessage] = dspy.InputField()
     final_synthesis: SearchResult = dspy.OutputField(
-        desc="Final response as a JSON object following the SearchResult schema exactly"
+        desc="Final response from the system formatted as neat JSON dictionary with indent"
     )
 
 
@@ -113,14 +111,9 @@ class HybridSearch:
 
     def augment(self, state: HybridState) -> dict:
         messages = deepcopy(state.get("messages"))
-        # always take query that was used for the most recent run
-        original_query = messages[-3].content
-        response = synthesize(
-            original_query=original_query, all_generation=messages)
-        # The response is now a SearchResult dict, convert to JSON string
-        result_dict = response.get("final_synthesis")
-        response_json = json.dumps(result_dict, indent=2)
-        return {"messages": [response_json]}
+        original_query = messages[-3].content # always take query that was used for the most recent run
+        response = synthesize(original_query=original_query, all_generation=messages)
+        return {"messages": [json.dumps(response.get("final_synthesis"))]}
 
     def initialize_graph(self) -> Any:
         graph_builder = StateGraph(HybridState)
