@@ -52,7 +52,7 @@ elif int(MODEL_TYPE) == 1:
 else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
-dspy.configure(lm=llm)
+dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str):

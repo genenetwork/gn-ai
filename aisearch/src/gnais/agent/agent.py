@@ -132,5 +132,5 @@ class Digest:
         result = result.get("messages")[-1].content
         reformatted = reformat(input_text=result).get(
             "result"
-        )  # transform to valid format
+        )  # transform to valid nested dictionary
         return reformatted
