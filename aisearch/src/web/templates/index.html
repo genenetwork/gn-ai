@@ -4,434 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeneNetwork AI Search</title>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: #f5f5f5;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        /* Header */
-        .header {
-            background: white;
-            border-bottom: 1px solid #e0e0e0;
-            padding: 1em 2em;
-            display: flex;
-            align-items: center;
-            gap: 1em;
-        }
-
-        .header-logo {
-            width: 32px;
-            height: 32px;
-            background: #4CAF50;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-        }
-
-        .header-title {
-            font-size: 1.2em;
-            font-weight: 600;
-            color: #333;
-        }
-
-        /* Chat container */
-        .chat-container {
-            flex: 1;
-            overflow-y: auto;
-            padding: 2em;
-            max-width: 900px;
-            margin: 0 auto;
-            width: 100%;
-        }
-
-        /* Empty state */
-        .empty-state {
-            text-align: center;
-            padding: 4em 2em;
-            color: #666;
-        }
-
-        .empty-state h1 {
-            font-size: 2.5em;
-            margin-bottom: 0.5em;
-            color: #333;
-            font-weight: 600;
-        }
-
-        .empty-state p {
-            font-size: 1.1em;
-            color: #888;
-            margin-bottom: 0.5em;
-        }
-
-        .examples {
-            margin-top: 2em;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5em;
-            align-items: center;
-        }
-
-        .example-btn {
-            background: white;
-            border: 1px solid #e0e0e0;
-            padding: 0.8em 1.5em;
-            border-radius: 20px;
-            cursor: pointer;
-            color: #555;
-            font-size: 0.95em;
-            transition: all 0.2s;
-        }
-
-        .example-btn:hover {
-            border-color: #2d8cf0;
-            color: #2d8cf0;
-        }
-
-        /* Message styles */
-        .message {
-            margin-bottom: 2em;
-            animation: fadeIn 0.3s ease;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .message-user {
-            display: flex;
-            justify-content: flex-end;
-        }
-
-        .message-user .message-content {
-            background: #2d8cf0;
-            color: white;
-            border-radius: 18px 18px 4px 18px;
-            padding: 1em 1.5em;
-            max-width: 80%;
-            line-height: 1.5;
-        }
-
-        .message-ai {
-            display: flex;
-            gap: 1em;
-        }
-
-        .avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            background: #4CAF50;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: bold;
-            flex-shrink: 0;
-        }
-
-        .message-content {
-            flex: 1;
-            background: white;
-            border-radius: 12px;
-            padding: 1.5em;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            line-height: 1.7;
-        }
-
-        /* AI Response styling */
-        .ai-response h3 {
-            color: #333;
-            margin: 1.5em 0 0.8em 0;
-            font-size: 1.2em;
-            border-bottom: 2px solid #e0e0e0;
-            padding-bottom: 0.3em;
-        }
-
-        .ai-response h3:first-child {
-            margin-top: 0;
-        }
-
-        .summary {
-            background: #f8f9fa;
-            border-left: 4px solid #2d8cf0;
-            padding: 1em 1.2em;
-            margin: 1em 0;
-            border-radius: 0 8px 8px 0;
-            font-style: italic;
-            color: #555;
-        }
-
-        /* Status indicators */
-        .status-success {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5em;
-            color: #4CAF50;
-            font-size: 0.9em;
-            margin-bottom: 1em;
-        }
-
-        .status-success::before {
-            content: "✓";
-            background: #4CAF50;
-            color: white;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-        }
-
-        .status-partial {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5em;
-            color: #FF9800;
-            font-size: 0.9em;
-            margin-bottom: 1em;
-        }
-
-        .status-partial::before {
-            content: "⚠";
-            background: #FF9800;
-            color: white;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-        }
-
-        .status-error {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5em;
-            color: #f44336;
-            font-size: 0.9em;
-            margin-bottom: 1em;
-        }
-
-        .status-error::before {
-            content: "✗";
-            background: #f44336;
-            color: white;
-            width: 18px;
-            height: 18px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-        }
-
-        /* Cards for genes, traits, datasets */
-        .card-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .card-item {
-            background: #fafafa;
-            border: 1px solid #e8e8e8;
-            border-radius: 10px;
-            padding: 1.2em;
-            margin-bottom: 1em;
-            transition: all 0.2s ease;
-        }
-
-        .card-item:hover {
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            border-color: #d0d0d0;
-        }
-
-        .card-title {
-            font-weight: 600;
-            color: #2d8cf0;
-            font-size: 1.1em;
-            margin-bottom: 0.5em;
-        }
-
-        .card-title a {
-            color: inherit;
-            text-decoration: none;
-        }
-
-        .card-title a:hover {
-            text-decoration: underline;
-        }
-
-        .card-description {
-            color: #555;
-            font-size: 0.95em;
-            line-height: 1.6;
-            margin-bottom: 0.5em;
-        }
-
-        .card-meta {
-            color: #666;
-            font-size: 0.9em;
-            font-style: italic;
-        }
-
-        /* Note boxes */
-        .note-box {
-            background: #fff3e0;
-            border: 1px solid #ffe0b2;
-            border-radius: 8px;
-            padding: 1em;
-            margin-top: 1.5em;
-            color: #e65100;
-            font-size: 0.95em;
-        }
-
-        .access-note {
-            background: #e8f5e9;
-            border: 1px solid #c8e6c9;
-            border-radius: 8px;
-            padding: 1em;
-            margin-top: 1.5em;
-            color: #2e7d32;
-            font-size: 0.95em;
-        }
-
-        /* Error display */
-        .error-display {
-            background: #ffebee;
-            border: 1px solid #ef9a9a;
-            border-radius: 8px;
-            padding: 1em;
-            color: #c62828;
-            margin-bottom: 1em;
-        }
-
-        .raw-response {
-            background: #f5f5f5;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 1em;
-            margin-top: 1em;
-            font-family: monospace;
-            font-size: 0.85em;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        /* Loading indicator */
-        .loading-message {
-            display: flex;
-            align-items: center;
-            gap: 1em;
-            color: #666;
-            padding: 1em;
-        }
-
-        .loading-dots {
-            display: flex;
-            gap: 4px;
-        }
-
-        .loading-dots span {
-            width: 8px;
-            height: 8px;
-            background: #2d8cf0;
-            border-radius: 50%;
-            animation: bounce 1.4s infinite ease-in-out;
-        }
-
-        .loading-dots span:nth-child(1) { animation-delay: 0s; }
-        .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
-
-        @keyframes bounce {
-            0%, 80%, 100% { transform: scale(0); }
-            40% { transform: scale(1); }
-        }
-
-        /* Input area */
-        .input-container {
-            padding: 1.5em;
-            background: white;
-            border-top: 1px solid #e0e0e0;
-        }
-
-        .input-wrapper {
-            max-width: 900px;
-            margin: 0 auto;
-            position: relative;
-        }
-
-        .search-input {
-            width: 100%;
-            padding: 1em 3.5em 1em 1.5em;
-            font-size: 1em;
-            border: 2px solid #e0e0e0;
-            border-radius: 25px;
-            outline: none;
-            transition: border-color 0.2s;
-        }
-
-        .search-input:focus {
-            border-color: #2d8cf0;
-        }
-
-        .search-button {
-            position: absolute;
-            right: 6px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: #2d8cf0;
-            color: white;
-            border: none;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.2s;
-        }
-
-        .search-button:hover {
-            background: #1a7de9;
-        }
-
-        .search-button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        /* Error message */
-        .error-message {
-            background: #ffebee;
-            border: 1px solid #ef9a9a;
-            border-radius: 8px;
-            padding: 1em;
-            color: #c62828;
-        }
-    </style>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="header">
@@ -445,22 +19,48 @@
             <p>Ask natural language questions about genes, traits, and datasets</p>
             <p style="font-size: 0.9em; color: #999;">Powered by Hybrid RAG + Agent</p>
             <div class="examples">
-                <button class="example-btn" onclick="setQuery('What genes are associated with diabetes?')">
+                <button type="button" class="example-btn"
+                        onclick="setQuery('What genes are associated with diabetes?')">
                     What genes are associated with diabetes?
                 </button>
-                <button class="example-btn" onclick="setQuery('Find datasets related to obesity')">
+                <button type="button" class="example-btn"
+                        onclick="setQuery('Find datasets related to obesity')">
                     Find datasets related to obesity
                 </button>
-                <button class="example-btn" onclick="setQuery('How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?')">
+                <button type="button" class="example-btn"
+                        onclick="setQuery('How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?')">
                     How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?
                 </button>
+            </div>
+        </div>
+
+        <!-- messages wrapper -->
+        <div id="messages"></div>
+
+        <!-- indicator sits after messages so it appears at the bottom -->
+        <div id="loading-indicator" class="message message-ai htmx-indicator">
+            <div class="avatar">AI</div>
+            <div class="message-content">
+                <div class="loading-message">
+                    <div class="loading-dots">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <span>Searching GeneNetwork data...</span>
+                </div>
             </div>
         </div>
     </div>
 
     <div class="input-container">
-        <form class="input-wrapper" id="search-form" onsubmit="handleSearch(event)">
+        <form class="input-wrapper"
+              id="search-form"
+              hx-get="/search"
+              hx-target="#messages"
+              hx-swap="beforeend"
+              hx-indicator="#loading-indicator"
+              hx-on::before-request="document.getElementById('empty-state').style.display='none'">
             <input type="text"
+                   name="q"
                    id="search-input"
                    class="search-input"
                    placeholder="Ask a question about genes, traits, or datasets..."
@@ -473,195 +73,40 @@
     </div>
 
     <script>
-        let isSearching = false;
-
         function setQuery(query) {
-            document.getElementById('search-input').value = query;
-            document.getElementById('search-input').focus();
-        }
-
-        function scrollToBottom() {
-            const container = document.getElementById('chat-container');
-            container.scrollTop = container.scrollHeight;
-        }
-
-        async function handleSearch(event) {
-            event.preventDefault();
-
             const input = document.getElementById('search-input');
-            const btn = document.getElementById('search-btn');
-            const container = document.getElementById('chat-container');
+            input.value = query;
+            input.focus();
+        }
+
+        document.getElementById('search-form').addEventListener('htmx:beforeRequest', function () {
+            const input = document.getElementById('search-input');
             const query = input.value.trim();
+            if (!query) return;
 
-            if (!query || isSearching) return;
-
-            // Hide empty state
-            document.getElementById('empty-state').style.display = 'none';
-
-            // Add user message
+            // append user message immediately so the loading indicator appears below it
+            const messages = document.getElementById('messages');
             const userMsg = document.createElement('div');
             userMsg.className = 'message message-user';
-            userMsg.innerHTML = `<div class="message-content">${escapeHtml(query)}</div>`;
-            container.appendChild(userMsg);
+            const content = document.createElement('div');
+            content.className = 'message-content';
+            content.textContent = query;
+            userMsg.appendChild(content);
+            messages.appendChild(userMsg);
 
-            // Clear input and disable
             input.value = '';
-            input.disabled = true;
-            btn.disabled = true;
-            isSearching = true;
+        });
 
-            // Add loading message
-            const loadingMsg = document.createElement('div');
-            loadingMsg.className = 'message message-ai';
-            loadingMsg.id = 'loading-msg';
-            loadingMsg.innerHTML = `
-                <div class="avatar">AI</div>
-                <div class="message-content">
-                    <div class="loading-message">
-                        <div class="loading-dots">
-                            <span></span><span></span><span></span>
-                        </div>
-                        <span>Searching GeneNetwork data...</span>
-                    </div>
-                </div>
-            `;
-            container.appendChild(loadingMsg);
-            scrollToBottom();
+        document.body.addEventListener('htmx:afterSwap', function () {
+            document.getElementById('search-input').focus();
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+        });
 
-            try {
-                const response = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`);
-                const data = await response.json();
-
-                // Remove loading message
-                document.getElementById('loading-msg').remove();
-
-                // Add AI response
-                const aiMsg = document.createElement('div');
-                aiMsg.className = 'message message-ai';
-                aiMsg.innerHTML = `
-                    <div class="avatar">AI</div>
-                    <div class="message-content">
-                        ${formatResponse(data)}
-                    </div>
-                `;
-                container.appendChild(aiMsg);
-
-            } catch (error) {
-                // Remove loading message
-                document.getElementById('loading-msg').remove();
-
-                // Add error message
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'message message-ai';
-                errorMsg.innerHTML = `
-                    <div class="avatar">AI</div>
-                    <div class="message-content">
-                        <div class="error-message">
-                            <strong>Error:</strong> ${escapeHtml(error.message)}
-                        </div>
-                    </div>
-                `;
-                container.appendChild(errorMsg);
-            }
-
-            // Re-enable input
-            input.disabled = false;
-            btn.disabled = false;
-            input.focus();
-            isSearching = false;
-            scrollToBottom();
-        }
-
-        function formatResponse(data) {
-            // Handle error status
-            if (data.error || data.status === 'error') {
-                let html = '<div class="ai-response">';
-                html += '<div class="status-error">Search encountered an error</div>';
-                html += `<div class="error-display">${escapeHtml(data.error || data.message || 'Unknown error')}</div>`;
-
-                // Show raw response if available (for debugging)
-                if (data.raw_response) {
-                    html += '<div class="raw-response">';
-                    html += '<strong>Raw Response:</strong><br>';
-                    html += escapeHtml(data.raw_response);
-                    html += '</div>';
-                }
-
-                html += '</div>';
-                return html;
-            }
-
-            let html = '<div class="ai-response">';
-
-            // Status indicator
-            if (data.status === 'success') {
-                html += '<div class="status-success">Search completed successfully</div>';
-            } else if (data.status === 'partial_success') {
-                html += '<div class="status-partial">Partial success - some data sources unavailable</div>';
-            }
-
-            // Summary
-            if (data.summary) {
-                html += `<div class="summary">${escapeHtml(data.summary)}</div>`;
-            }
-
-            // Results section - grouped by type
-            if (data.results && data.results.length > 0) {
-                // Group results by type
-                const grouped = {};
-                data.results.forEach(result => {
-                    const type = result.type || 'Other';
-                    if (!grouped[type]) grouped[type] = [];
-                    grouped[type].push(result);
-                });
-
-                // Render each group
-                Object.keys(grouped).sort().forEach(type => {
-                    const items = grouped[type];
-                    const displayType = type.charAt(0).toUpperCase() + type.slice(1) + 's';
-                    html += `<h3>${escapeHtml(displayType)} (${items.length})</h3>`;
-                    html += '<ul class="card-list">';
-
-                    items.forEach(item => {
-                        const url = item.url || item.link || '#';
-                        const name = item.name || item.symbol || item.trait_name || 'Unnamed';
-                        html += `
-                            <li class="card-item">
-                                <div class="card-title">
-                                    <a href="${escapeHtml(url)}" target="_blank">${escapeHtml(name)}</a>
-                                </div>
-                                ${item.description ? `<div class="card-description">${escapeHtml(item.description)}</div>` : ''}
-                                ${item.extra ? `<div class="card-meta">${escapeHtml(item.extra)}</div>` : ''}
-                            </li>
-                        `;
-                    });
-
-                    html += '</ul>';
-                });
-            } else {
-                html += '<div class="note-box">No specific results were found for this query.</div>';
-            }
-
-            // Note box (for partial success or other notes)
-            if (data.note) {
-                html += `<div class="note-box">${escapeHtml(data.note)}</div>`;
-            }
-
-            // Access note
-            if (data.access_note) {
-                html += `<div class="access-note">${escapeHtml(data.access_note)}</div>`;
-            }
-
-            html += '</div>';
-            return html;
-        }
-
-        function escapeHtml(text) {
-            if (text === null || text === undefined) return '';
-            const div = document.createElement('div');
-            div.textContent = String(text);
-            return div.innerHTML;
-        }
+        document.body.addEventListener('htmx:oobAfterSwap', function () {
+            const container = document.getElementById('chat-container');
+            container.scrollTop = container.scrollHeight;
+        });
     </script>
 </body>
 </html>

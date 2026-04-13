@@ -1,5 +1,6 @@
 import os
 import json
+from itertools import groupby
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
@@ -13,9 +14,11 @@ from gnais.ragent import HybridSearch
 app = Quart(__name__)
 app.config.from_object(Config)
 
-# Set up template directory
+# Set up template and static directories
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 app.template_folder = template_dir
+static_dir = os.path.join(os.path.dirname(__file__), 'static')
+app.static_folder = static_dir
 
 limiter = Limiter(
     get_remote_address,
@@ -63,36 +66,69 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 # re-instantiating this class on every request.
 hybrid_search = HybridSearch()
 
+
+async def _run_search(query: str):
+    """Run the hybrid search and return a parsed dict."""
+    raw_output = await hybrid_search.handle(query)
+    try:
+        return json.loads(raw_output)
+    except json.JSONDecodeError:
+        return {
+            "status": "error",
+            "error": "Invalid JSON response from model",
+            "raw_response": raw_output[:500],
+        }
+
+
+def _group_results(results):
+    """Group search results by type (defaulting to 'Other')."""
+    sorted_results = sorted(results, key=lambda r: r.get("type") or "Other")
+    grouped = {}
+    for type_key, items in groupby(sorted_results, key=lambda r: r.get("type") or "Other"):
+        grouped[type_key] = list(items)
+    return grouped
+
+
 @app.route("/")
 async def index():
     """Serve the AI search web interface."""
     return await render_template("index.html")
 
+
 @app.route("/api/v1/search", methods=["GET"])
-@cache.cached(timeout=604800, make_cache_key=lambda: request.args.get("q"))
+@cache.cached(timeout=604800, make_cache_key=lambda: f"api:v1:{request.args.get('q')}")
 @limiter.limit("300 per day")
 async def search():
-    """Search endpoint - no authentication required."""
+    """JSON search endpoint - no authentication required."""
     query = request.args.get("q")
     if not query:
         return jsonify({"error": "Missing query parameter 'q'"}), 400
     if len(query) > 1000:
         return jsonify({"error": "Query too long"}), 400
 
-    # Get the raw output from hybrid search (it's a JSON string)
-    raw_output = await hybrid_search.handle(query)
+    parsed_output = await _run_search(query)
+    if parsed_output.get("status") == "error" or "error" in parsed_output:
+        status_code = 500 if parsed_output.get("status") == "error" else 200
+        return jsonify(parsed_output), status_code
+    return jsonify(parsed_output)
 
-    # Try to parse it as JSON
-    try:
-        parsed_output = json.loads(raw_output)
-        return jsonify(parsed_output)
-    except json.JSONDecodeError:
-        # If it's not valid JSON, wrap it in an error response
-        return jsonify({
-            "status": "error",
-            "error": "Invalid JSON response from model",
-            "raw_response": raw_output[:500]  # First 500 chars
-        }), 500
+
+@app.route("/search", methods=["GET"])
+@cache.cached(timeout=604800, make_cache_key=lambda: f"html:v1:{request.args.get('q')}")
+@limiter.limit("300 per day")
+async def search_html():
+    """HTML fragment search endpoint for htmx."""
+    query = request.args.get("q")
+    if not query:
+        return "<div class='error-message'>Missing query parameter 'q'</div>", 400
+    if len(query) > 1000:
+        return "<div class='error-message'>Query too long</div>", 400
+
+    parsed_output = await _run_search(query)
+    grouped = {}
+    if parsed_output.get("results"):
+        grouped = _group_results(parsed_output["results"])
+    return await render_template("partials/response.html", query=query, data=parsed_output, grouped=grouped)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
