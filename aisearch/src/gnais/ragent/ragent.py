@@ -5,7 +5,6 @@ __all__ = (
     "Synthesis",
     "synthesize",
     "HybridState",
-    "THREAD",
     "SearchResult",
 )
 
@@ -26,7 +25,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import Annotated, TypedDict
 
-THREAD = uuid.uuid4().hex[:8]
 
 class SearchResult(TypedDict):
     """Standardized search result schema with flexible results array"""
@@ -132,7 +130,7 @@ class HybridSearch:
         return graph
 
     async def invoke_graph(self, query: str) -> Any:
-        config = {"configurable": {"thread_id": THREAD}}
+        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
         result = await self.graph.ainvoke(
             {"messages": [HumanMessage(content=query)]}, config
         )

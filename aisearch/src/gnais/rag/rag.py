@@ -5,7 +5,6 @@ Embedding model = Qwen/Qwen3-Embedding-0.6B
 
 __all__ = (
     "AISearch",
-    "THREAD",
     "extract_keywords",
     "classify_search",
 )
@@ -34,7 +33,6 @@ from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
-THREAD = uuid.uuid4().hex[:8]
 
 
 class State(TypedDict):
@@ -241,7 +239,7 @@ class AISearch:
         return {"messages": [response]}
 
     async def call_graph(self, query: str) -> Any:
-        config = {"configurable": {"thread_id": THREAD}}
+        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
         result = await self.graph.ainvoke(
             {"messages": [HumanMessage(content=query)]}, config
         )

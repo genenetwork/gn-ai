@@ -19,7 +19,6 @@ from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
 from typing_extensions import Annotated, TypedDict
 
-THREAD = uuid.uuid4().hex[:8]
 
 SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
 if SPARQL_ENDPOINT is None:
@@ -121,7 +120,7 @@ class Digest:
         return {"messages": [output]}
 
     async def call_graph(self, query: str) -> Any:
-        config = {"configurable": {"thread_id": THREAD}}
+        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
         result = await self.graph.ainvoke(
             {"messages": [HumanMessage(content=query)]}, config
         )
