@@ -94,17 +94,14 @@ class HybridSearch:
 
     async def rag(self, state: HybridState) -> dict:
         response = await self.run_node(state, rag_digest)
-        print(f"\nRAG run!\nTemporary result: {response}")
         return {"messages": [response]}
 
     async def grag(self, state: HybridState) -> dict:
         response = await self.run_node(state, grag_digest)
-        print(f"\nGraphRAG run!\nTemporary result: {response}")
         return {"messages": [response]}
 
     async def agent(self, state: HybridState) -> dict:
         response = await self.run_node(state, agent_digest)
-        print(f"\nAgent run!\nTemporary result: {response}")
         return {"messages": [response]}
 
     def augment(self, state: HybridState) -> dict:
@@ -139,5 +136,4 @@ class HybridSearch:
     async def handle(self, query: str) -> str:
         result = await self.invoke_graph(query)
         result = result.get("messages")[-1].content
-        print(f"\nRun of hybrid search completed!\nFinal result: {result}")
         return result
