@@ -1,6 +1,7 @@
 """This is the main module of the package using agent tool calling"""
 
 import torch
+import sys
 from gnais.agent.agent import *
 
 SEED = os.getenv("SEED")
@@ -56,3 +57,12 @@ async def digest(query: str):
     digest = Digest()
     output = await digest.handle(query)
     return output
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python agent_search.py '<query>'")
+        sys.exit(1)
+    query = sys.argv[1]
+    output = asyncio.run(digest(query))
+    print(output)
