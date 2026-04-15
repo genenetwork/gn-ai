@@ -133,6 +133,19 @@ class HybridSearch:
         )
         return result
 
+    async def stream_graph(self, query: str):
+        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
+        # Use astream with stream_mode="values" to get full state after each node
+        async for chunk in self.graph.astream(
+                {"messages": [HumanMessage(content=query)]},
+                config,
+                stream_mode="updates"
+        ):
+            # chunk is the entire HybridState after some node(s)
+            # executed You can access the latest message, e.g.:
+            yield chunk # or process as needed
+
+
     async def handle(self, query: str) -> str:
         result = await self.invoke_graph(query)
         result = result.get("messages")[-1].content
