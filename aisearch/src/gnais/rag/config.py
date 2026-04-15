@@ -59,7 +59,7 @@ class Reformat(dspy.Signature):
     """Reformat ListInformation into valid Python dictionary"""
 
     input_text: str = dspy.InputField()
-    result: str = dspy.OutputField(desc="Input reformatted to valid Python dictionary")
+    result: str = dspy.OutputField(desc="Input reformatted to valid json format")
 
 
 reformat = dspy.Predict(Reformat)
