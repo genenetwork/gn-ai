@@ -1,24 +1,31 @@
-"""This is the main module of the package using agent tool calling"""
+import os
+import warnings
 
+import dspy
 import torch
-from gnais.agent.agent import *
+from gnais.rag.grag import *
+
+warnings.filterwarnings("ignore")
+
+SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+if SPARQL_ENDPOINT is None:
+    raise ValueError("SPARQL_ENDPOINT must be specified to access database")
 
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
 MODEL_NAME = os.getenv("MODEL_NAME")
 if MODEL_NAME is None:
-    raise ValueError("MODEL_NAME must be specified - either proprietary or local")
+    raise ValueError(
+        "MODEL_NAME must be specified - either proprietary or local")
 MODEL_TYPE = os.getenv("MODEL_TYPE")
 if MODEL_TYPE is None:
     raise ValueError("MODEL_TYPE must be specified")
-
 
 torch.manual_seed(SEED)
 
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
-
 
 if int(MODEL_TYPE) == 0:
     llm = dspy.LM(
@@ -35,7 +42,8 @@ if int(MODEL_TYPE) == 0:
 elif int(MODEL_TYPE) == 1:
     API_KEY = os.getenv("API_KEY")
     if API_KEY is None:
-        raise ValueError("Valid API_KEY must be specified to use the proprietary model")
+        raise ValueError(
+            "Valid API_KEY must be specified to use the proprietary model")
     llm = dspy.LM(
         MODEL_NAME,
         api_key=API_KEY,
@@ -46,11 +54,15 @@ elif int(MODEL_TYPE) == 1:
 else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
-
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
+def search(query: str):
+    set_search = AISearch(endpoint_url=SPARQL_ENDPOINT, llm=llm)
+    return query, set_search
+
+
 async def digest(query: str):
-    digest = Digest()
-    output = await digest.handle(query)
+    query, set_search = search(query)
+    output = await set_search.handle(query)
     return output
