@@ -1,107 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeneNetwork AI Search</title>
-    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>
-<body>
-    <div class="header">
-        <div class="header-logo">GN</div>
-        <div class="header-title">GeneNetwork AI Search</div>
-    </div>
-
-    <div class="chat-container" id="chat-container">
-        <div class="empty-state" id="empty-state">
-            <h1>GeneNetwork AI Search</h1>
-            <p>Ask natural language questions about genes, traits, and datasets</p>
-            <p style="font-size: 0.9em; color: #999;">Powered by Hybrid RAG + Agent</p>
-            <div class="examples">
-                <button type="button" class="example-btn"
-                        onclick="setQuery('What genes are associated with diabetes?')">
-                    What genes are associated with diabetes?
-                </button>
-                <button type="button" class="example-btn"
-                        onclick="setQuery('Find datasets related to obesity')">
-                    Find datasets related to obesity
-                </button>
-                <button type="button" class="example-btn"
-                        onclick="setQuery('How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?')">
-                    How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?
-                </button>
-            </div>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GeneNetwork AI Search</title>
+        <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+        <script src="https://unpkg.com/hyperscript.org@0.9.91"></script>
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='css/style.css') }}">
+    </head>
+    <body>
+        <div class="header">
+            <div class="header-logo">GN</div>
+            <div class="header-title">GeneNetwork AI Search</div>
         </div>
-
-        <!-- messages wrapper -->
-        <div id="messages"></div>
-
-        <!-- indicator sits after messages so it appears at the bottom -->
-        <div id="loading-indicator" class="message message-ai htmx-indicator">
-            <div class="avatar">AI</div>
-            <div class="message-content">
-                <div class="loading-message">
-                    <div class="loading-dots">
-                        <span></span><span></span><span></span>
+        <div class="chat-container" id="chat-container">
+            <div class="empty-state" id="empty-state">
+                <h1>GeneNetwork AI Search</h1>
+                <p>Ask natural language questions about genes, traits, and datasets</p>
+                <p style="font-size: 0.9em; color: #999;">Powered by Hybrid RAG + Agent</p>
+                <div class="examples">
+                    <button type="button"
+                            class="example-btn"
+                            _="on click set #search-input.value to 'What genes are associated with diabetes?' then call #search-input.focus()">
+                        What genes are associated with diabetes?
+                    </button>
+                    <button type="button"
+                            class="example-btn"
+                            _="on click set #search-input.value to 'Find datasets related to obesity' then call #search-input.focus()">
+                        Find datasets related to obesity
+                    </button>
+                    <button type="button"
+                            class="example-btn"
+                            _="on click set #search-input.value to 'How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?' then call #search-input.focus()">
+                        How does the mosaic structure of BXD recombinant inbred mice genomes affect mapping resolution across generations?
+                    </button>
+                </div>
+            </div>
+            <!-- messages wrapper -->
+            <div id="messages"></div>
+            <!-- indicator sits after messages so it appears at the bottom -->
+            <div id="loading-indicator" class="message message-ai htmx-indicator">
+                <div class="avatar">AI</div>
+                <div class="message-content">
+                    <div class="loading-message">
+                        <div class="loading-dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <span>Searching GeneNetwork data...</span>
                     </div>
-                    <span>Searching GeneNetwork data...</span>
                 </div>
             </div>
         </div>
-    </div>
+        <div class="input-container">
+            <form class="input-wrapper"
+                  id="search-form"
+                  hx-get="/search"
+                  hx-target="#messages"
+                  hx-swap="beforeend"
+                  hx-indicator="#loading-indicator"
+                  _="on htmx:beforeRequest if no #search-input.value.trim() halt end call appendUserMessage(#search-input.value.trim()) set #search-input.value to '' put 'none' into #empty-state's style.display">
+                <input type="text"
+                       name="q"
+                       id="search-input"
+                       class="search-input"
+                       placeholder="Ask a question about genes, traits, or datasets..."
+                       autocomplete="off"
+                       autofocus>
+                <button type="submit"
+                        class="search-button"
+                        id="search-btn"
+                        _="on click call focusInputAndScroll()">↑</button>
+            </form>
+        </div>
+        <script type="text/hyperscript">
+	 def appendUserMessage(query)
+	     append `
+<div class="message message-user">
+   <div class="message-content">
+     ${query}
+   </div>
+</div>
+	 ` to #messages
+	 end
 
-    <div class="input-container">
-        <form class="input-wrapper"
-              id="search-form"
-              hx-get="/search"
-              hx-target="#messages"
-              hx-swap="beforeend"
-              hx-indicator="#loading-indicator"
-              hx-on::before-request="document.getElementById('empty-state').style.display='none'">
-            <input type="text"
-                   name="q"
-                   id="search-input"
-                   class="search-input"
-                   placeholder="Ask a question about genes, traits, or datasets..."
-                   autocomplete="off"
-                   autofocus>
-            <button type="submit" class="search-button" id="search-btn">
-                ↑
-            </button>
-        </form>
-    </div>
-
-    <script>
-        function setQuery(query) {
-            const input = document.getElementById('search-input');
-            input.value = query;
-            input.focus();
-        }
-
-        document.getElementById('search-form').addEventListener('htmx:beforeRequest', function () {
-            const input = document.getElementById('search-input');
-            const query = input.value.trim();
-            if (!query) return;
-
-            // append user message immediately so the loading indicator appears below it
-            const messages = document.getElementById('messages');
-            const userMsg = document.createElement('div');
-            userMsg.className = 'message message-user';
-            const content = document.createElement('div');
-            content.className = 'message-content';
-            content.textContent = query;
-            userMsg.appendChild(content);
-            messages.appendChild(userMsg);
-
-            input.value = '';
-        });
-
-        document.body.addEventListener('htmx:afterSwap', function () {
-            document.getElementById('search-input').focus();
-            const container = document.getElementById('chat-container');
-            container.scrollTop = container.scrollHeight;
-        });
-    </script>
-</body>
+	 def focusInputAndScroll()
+	     call #search-input.focus()
+	     scroll to the bottom of #messages
+	 end
+        </script>
+    </body>
 </html>
