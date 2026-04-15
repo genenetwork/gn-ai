@@ -56,10 +56,12 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def digest(query: str):
+async def digest(query: str):
     search = HybridSearch()
-    output = search.handle(query)
-    return output
+    async for message in search.stream_graph(query):
+        print(f"Intermediate: {message}")
+        final_result = message
+    return final_result
 
 
 if __name__ == "__main__":
@@ -68,4 +70,3 @@ if __name__ == "__main__":
         sys.exit(1)
     query = sys.argv[1]
     output = asyncio.run(digest(query))
-    print(output)
