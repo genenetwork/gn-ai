@@ -1,6 +1,8 @@
 """Main module of hybrid search for GeneNetwork"""
 import os
 import asyncio
+import sys
+import dspy
 
 import torch
 from gnais.ragent import HybridSearch
