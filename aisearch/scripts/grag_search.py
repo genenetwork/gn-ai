@@ -1,5 +1,7 @@
+import asyncio
 import os
 import warnings
+import sys
 
 import dspy
 import torch
@@ -66,3 +68,12 @@ async def digest(query: str):
     query, set_search = search(query)
     output = await set_search.handle(query)
     return output
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python grag_search.py '<query>'")
+        sys.exit(1)
+    query = sys.argv[1]
+    output = asyncio.run(digest(query))
+    print(output)

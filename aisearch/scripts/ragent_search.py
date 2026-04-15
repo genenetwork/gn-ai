@@ -1,5 +1,6 @@
 """Main module of hybrid search for GeneNetwork"""
 import os
+import asyncio
 
 import torch
 from gnais.ragent import HybridSearch
@@ -57,3 +58,12 @@ def digest(query: str):
     search = HybridSearch()
     output = search.handle(query)
     return output
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Usage: python ragent_search.py '<query>'")
+        sys.exit(1)
+    query = sys.argv[1]
+    output = asyncio.run(digest(query))
+    print(output)
