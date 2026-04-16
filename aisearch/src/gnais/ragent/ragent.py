@@ -12,13 +12,14 @@ import asyncio
 import uuid
 import json
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import dspy
-from gnais.agent.search import digest as agent_digest
-from gnais.rag.rag_search import digest as rag_digest
-from gnais.rag.grag_search import digest as grag_digest
+from gnais.agent.agent import Digest as AgentSearch
+from gnais.config import Config
+from gnais.rag.grag import AISearch as GraphRAGSearch
+from gnais.rag.rag import AISearch as RAGSearch
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -76,30 +77,82 @@ class HybridState(TypedDict):
 
 @dataclass
 class HybridSearch:
+    stream: bool = False
+    rag_search: Any = field(init=False)
+    grag_search: Any = field(init=False)
+    agent_search: Any = field(init=False)
+    rag_stream_search: Any = field(init=False)
+    grag_stream_search: Any = field(init=False)
+    agent_stream_search: Any = field(init=False)
+    graph: Any = field(init=False)
 
     def __post_init__(self):
+        self.rag_search = RAGSearch(
+            corpus_path=Config.CORPUS_PATH,
+            pcorpus_path=Config.PCORPUS_PATH,
+            db_path=Config.DB_PATH,
+            stream=False,
+        )
+        self.grag_search = GraphRAGSearch(
+            endpoint_url=Config.SPARQL_ENDPOINT,
+            llm=dspy.settings.lm,
+            stream=False,
+        )
+        self.agent_search = AgentSearch(stream=False)
+        self.rag_stream_search = RAGSearch(
+            corpus_path=Config.CORPUS_PATH,
+            pcorpus_path=Config.PCORPUS_PATH,
+            db_path=Config.DB_PATH,
+            stream=True,
+        )
+        self.grag_stream_search = GraphRAGSearch(
+            endpoint_url=Config.SPARQL_ENDPOINT,
+            llm=dspy.settings.lm,
+            stream=True,
+        )
+        self.agent_stream_search = AgentSearch(stream=True)
         self.graph = self.initialize_graph()
 
-    async def run_node(self, state: HybridState, func: Any) -> dict:
+    def _stream_event(self, source: str, kind: str, content: str = "") -> str:
+        return json.dumps(
+            {
+                "source": source,
+                "kind": kind,
+                "content": content,
+            }
+        ) + "\n"
+
+    async def _stream_component(
+        self, source: str, search: Any, query: str, queue: asyncio.Queue
+    ) -> None:
+        try:
+            async for chunk in search.handle(query):
+                await queue.put((source, "chunk", chunk))
+        except Exception as exc:
+            await queue.put((source, "error", str(exc)))
+        finally:
+            await queue.put((source, "done", ""))
+
+    async def run_node(self, state: HybridState, search: Any) -> dict:
         messages = deepcopy(state.get("messages"))
         if len(messages) <= 2:  # only for first queries
             query = messages[-1].content
         else:
             # provide access to memory for subsequent queries
             query = str(messages)
-        response = await func(query)
+        response = await search.handle(query)
         return response
 
     async def rag(self, state: HybridState) -> dict:
-        response = await self.run_node(state, rag_digest)
+        response = await self.run_node(state, self.rag_search)
         return {"messages": [response]}
 
     async def grag(self, state: HybridState) -> dict:
-        response = await self.run_node(state, grag_digest)
+        response = await self.run_node(state, self.grag_search)
         return {"messages": [response]}
 
     async def agent(self, state: HybridState) -> dict:
-        response = await self.run_node(state, agent_digest)
+        response = await self.run_node(state, self.agent_search)
         return {"messages": [response]}
 
     def augment(self, state: HybridState) -> dict:
@@ -131,20 +184,49 @@ class HybridSearch:
         )
         return result
 
-    async def stream_graph(self, query: str):
-        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
-        # Use astream with stream_mode="values" to get full state after each node
-        async for chunk in self.graph.astream(
-                {"messages": [HumanMessage(content=query)]},
-                config,
-                stream_mode="updates"
-        ):
-            # chunk is the entire HybridState after some node(s)
-            # executed You can access the latest message, e.g.:
-            yield chunk # or process as needed
-
-
-    async def handle(self, query: str) -> str:
+    async def _handle(self, query: str) -> str:
         result = await self.invoke_graph(query)
         result = result.get("messages")[-1].content
         return result
+
+    async def _handle_stream(self, query: str):
+        searches = {
+            "rag": self.rag_stream_search,
+            "grag": self.grag_stream_search,
+            "agent": self.agent_stream_search,
+        }
+        queue: asyncio.Queue = asyncio.Queue()
+        tasks = [
+            asyncio.create_task(self._stream_component(source, search, query, queue))
+            for source, search in searches.items()
+        ]
+        combined_outputs = {source: "" for source in searches}
+        remaining = len(tasks)
+
+        while remaining:
+            source, kind, content = await queue.get()
+            if kind == "chunk":
+                combined_outputs[source] += content
+                yield self._stream_event(source, kind, content)
+            elif kind == "error":
+                yield self._stream_event(source, kind, content)
+            elif kind == "done":
+                remaining -= 1
+                yield self._stream_event(source, kind)
+
+        await asyncio.gather(*tasks)
+
+        messages = [
+            HumanMessage(content=query),
+            HumanMessage(content=combined_outputs["rag"]),
+            HumanMessage(content=combined_outputs["grag"]),
+            HumanMessage(content=combined_outputs["agent"]),
+        ]
+        final = synthesize(original_query=query, all_generation=messages)
+        final = json.dumps(final.get("final_synthesis"))
+        yield self._stream_event("hybrid", "final", final)
+
+    def handle(self, query: str) -> Any:
+        if self.stream:
+            return self._handle_stream(query)
+        return self._handle(query)
