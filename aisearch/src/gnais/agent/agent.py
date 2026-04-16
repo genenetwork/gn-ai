@@ -13,7 +13,6 @@ from gnais.rag.config import ListInformation, reformat
 from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -91,16 +90,14 @@ class State(TypedDict):
 
 @dataclass
 class Digest:
-    memory: Any = field(init=False)
     graph: Any = field(init=False)
 
     def __post_init__(self):
-        self.memory = MemorySaver()
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
         graph_builder.add_edge(START, "chat")
         graph_builder.add_edge("chat", END)
-        self.graph = graph_builder.compile(checkpointer=self.memory)
+        self.graph = graph_builder.compile()
 
     def chat(self, state: State) -> dict:
         query = state.get("messages")

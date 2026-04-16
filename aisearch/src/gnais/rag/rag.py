@@ -26,7 +26,6 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_huggingface import HuggingFaceEmbeddings
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from tqdm import tqdm
@@ -58,7 +57,6 @@ class AISearch:
     keyword_weight: float = 0.5
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    memory: Any = field(init=False)
     graph: Any = field(init=False)
 
     def __post_init__(self):
@@ -97,13 +95,11 @@ class AISearch:
             weights=[1 - self.keyword_weight, self.keyword_weight],
         )
 
-        self.memory = MemorySaver()
-
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
         graph_builder.add_edge(START, "chat")
         graph_builder.add_edge("chat", END)
-        self.graph = graph_builder.compile(checkpointer=self.memory)
+        self.graph = graph_builder.compile()
 
     def corpus_to_docs(
         self,
@@ -140,7 +136,7 @@ class AISearch:
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any:  # small chunk_size for atomicity and memory management
+    ) -> Any:  # small chunk_size for atomicity
         """Initialize or read embedding database
 
         Args:

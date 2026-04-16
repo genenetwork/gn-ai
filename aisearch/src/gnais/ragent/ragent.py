@@ -20,7 +20,6 @@ from gnais.agent.search import digest as agent_digest
 from gnais.rag.rag_search import digest as rag_digest
 from gnais.rag.grag_search import digest as grag_digest
 from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import Annotated, TypedDict
@@ -79,7 +78,6 @@ class HybridState(TypedDict):
 class HybridSearch:
 
     def __post_init__(self):
-        self.memory = MemorySaver()
         self.graph = self.initialize_graph()
 
     async def run_node(self, state: HybridState, func: Any) -> dict:
@@ -123,7 +121,7 @@ class HybridSearch:
         graph_builder.add_edge("grag", "augment")
         graph_builder.add_edge("agent", "augment")
         graph_builder.add_edge("augment", END)
-        graph = graph_builder.compile(checkpointer=self.memory)
+        graph = graph_builder.compile()
         return graph
 
     async def invoke_graph(self, query: str) -> Any:
