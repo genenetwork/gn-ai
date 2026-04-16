@@ -1,5 +1,6 @@
 """This is the main module of the package"""
 
+import argparse
 import asyncio
 import json
 import os
@@ -70,7 +71,7 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def search(query: str):
+def search(query: str, stream: bool = False):
     task_type = classify_search(query)
     if task_type.get("decision") == "keyword":
         print("\nSettled on keyword-ish search!")
@@ -82,27 +83,43 @@ def search(query: str):
             pcorpus_path=PCORPUS_PATH,
             db_path=DB_PATH,
             keyword_weight=0.7,
+            stream=stream,
         )
     else:
         set_search = AISearch(
             corpus_path=CORPUS_PATH,
             pcorpus_path=PCORPUS_PATH,
             db_path=DB_PATH,
+            stream=stream,
         )
-        print("\nSettled on semantic-ish search!")
     return query, set_search
 
 
-async def digest(query: str):
-    query, set_search = search(query)
-    output = await set_search.handle(query)
+async def digest(query: str, stream: bool = False):
+    query, set_search = search(query, stream=stream)
+    result = set_search.handle(query)
+    if stream:
+        output = ""
+        async for chunk in result:
+            output += chunk
+            print(chunk, end="", flush=True)
+        print()
+        return output
+
+    output = await result
     return output
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python rag_search.py '<query>'")
-        sys.exit(1)
-    query = sys.argv[1]
-    output = asyncio.run(digest(query))
-    print(output)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Search query")
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream the response incrementally",
+    )
+    args = parser.parse_args()
+
+    output = asyncio.run(digest(args.query, stream=args.stream))
+    if not args.stream:
+        print(output)

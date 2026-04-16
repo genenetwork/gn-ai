@@ -51,8 +51,16 @@ class Generation(dspy.Signature):
     context: list = dspy.InputField(desc="Background information")
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
+class StreamGeneration(dspy.Signature):
+    """Wrap generation interface"""
+
+    input_text: str = dspy.InputField(desc="Query and instructions")
+    chat_history: list = dspy.InputField(desc="History of conversation")
+    context: list = dspy.InputField(desc="Background information")
+    feedback: str = dspy.OutputField(desc="System response to the query that has a list of detailed answers and the final answer")
 
 generate = dspy.Predict(Generation)
+generate_stream = dspy.Predict(StreamGeneration)
 
 
 class Reformat(dspy.Signature):
