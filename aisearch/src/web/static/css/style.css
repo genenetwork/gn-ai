@@ -294,10 +294,35 @@ body {
     border-color: rgba(29, 78, 216, 0.16);
 }
 
+.stream-stage-badge.is-working::before {
+    content: "";
+    display: inline-block;
+    width: 0.75em;
+    height: 0.75em;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
 .stream-stage-badge.is-complete {
     color: var(--success);
     background: rgba(22, 101, 52, 0.10);
     border-color: rgba(22, 101, 52, 0.14);
+}
+
+.stream-stage-badge.is-complete::before {
+    content: "✓";
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    font-size: 0.7em;
+    font-weight: 700;
+    background: var(--success);
+    color: white;
+    border-radius: 50%;
 }
 
 .stream-stage-badge.is-error {
@@ -552,6 +577,12 @@ body {
 
 .loading-dots span:nth-child(3) {
     animation-delay: 0.4s;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @keyframes bounce {
