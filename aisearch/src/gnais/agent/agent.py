@@ -72,7 +72,7 @@ class ReactSig(dspy.Signature):
 class StreamReactSig(dspy.Signature):
     query: str = dspy.InputField()
     solution: str = dspy.OutputField(
-        desc="The answer to the query with detailed answers and the final answer"
+        desc="The answer to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
     )
 
 
@@ -131,6 +131,7 @@ class Digest:
             Trait id: 16339
             Dataset name: BXDPublish
             New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
+            Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return system_prompt + query
 
@@ -174,7 +175,7 @@ class Digest:
             elif isinstance(value, dspy.Prediction):
                 solution = self._prediction_solution(value)
                 if solution:
-                    yield solution
+                    yield {"final": solution}
 
     def handle(self, query: str) -> Any:
         if self.stream:

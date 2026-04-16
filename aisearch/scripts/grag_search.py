@@ -71,8 +71,13 @@ async def digest(query: str, stream: bool = False):
     if stream:
         output = ""
         async for chunk in result:
-            output += chunk
-            print(chunk, end="", flush=True)
+            if isinstance(chunk, dict) and "final" in chunk:
+                final = chunk["final"]
+                output = final
+                print(final, end="", flush=True)
+            else:
+                output += chunk
+                print(chunk, end="", flush=True)
         print()
         return output
 

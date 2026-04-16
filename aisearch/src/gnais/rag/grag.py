@@ -65,7 +65,7 @@ class AISearch:
             stream_listeners=[
                 dspy.streaming.StreamListener(signature_field_name="feedback")
             ],
-            include_final_prediction_in_output_stream=False,
+            include_final_prediction_in_output_stream=True,
         )
 
     def chat(self, state: State) -> Dict[str, Any]:
@@ -86,7 +86,8 @@ class AISearch:
                Original trait link: https://rdf.genenetwork.org/v1/id/trait_16339
                Trait id: 16339
                Dataset name: BXDPublish
-               New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n"""
+               New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
+               Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks."""
         return system_prompt + f"Query: {query}"
 
     def _run_sparql_queries(self, sparql_queries: list[str]) -> str:
@@ -158,7 +159,7 @@ class AISearch:
             elif isinstance(value, dspy.Prediction):
                 feedback = self._prediction_feedback(value)
                 if feedback:
-                    yield feedback
+                    yield {"final": feedback}
 
     def handle(self, query: str) -> Any:
         if self.stream:

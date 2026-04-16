@@ -35,7 +35,9 @@
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
-                <div class="stream-stage-body" sse-swap="rag_chunk" hx-swap="beforeend"></div>
+                <div class="stream-stage-body-scroll" sse-swap="rag_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-stage-body" sse-swap="rag_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
+                </div>
             </section>
 
             <section class="stream-stage-card is-muted">
@@ -45,7 +47,9 @@
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
-                <div class="stream-stage-body" sse-swap="grag_chunk" hx-swap="beforeend"></div>
+                <div class="stream-stage-body-scroll" sse-swap="grag_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-stage-body" sse-swap="grag_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
+                </div>
             </section>
 
             <section class="stream-stage-card is-muted">
@@ -55,7 +59,9 @@
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
-                <div class="stream-stage-body" sse-swap="agent_chunk" hx-swap="beforeend"></div>
+                <div class="stream-stage-body-scroll" sse-swap="agent_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-stage-body" sse-swap="agent_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
+                </div>
             </section>
         </div>
 

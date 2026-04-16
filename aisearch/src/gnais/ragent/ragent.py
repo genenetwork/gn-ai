@@ -127,7 +127,10 @@ class HybridSearch:
     ) -> None:
         try:
             async for chunk in search.handle(query):
-                await queue.put((source, "chunk", chunk))
+                if isinstance(chunk, dict) and "final" in chunk:
+                    await queue.put((source, "final", chunk["final"]))
+                else:
+                    await queue.put((source, "chunk", chunk))
         except Exception as exc:
             await queue.put((source, "error", str(exc)))
         finally:
@@ -207,6 +210,9 @@ class HybridSearch:
             source, kind, content = await queue.get()
             if kind == "chunk":
                 combined_outputs[source] += content
+                yield self._stream_event(source, kind, content)
+            elif kind == "final":
+                combined_outputs[source] = content
                 yield self._stream_event(source, kind, content)
             elif kind == "error":
                 yield self._stream_event(source, kind, content)

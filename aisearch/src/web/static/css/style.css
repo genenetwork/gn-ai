@@ -306,8 +306,24 @@ body {
     border-color: rgba(185, 28, 28, 0.14);
 }
 
-.stream-stage-body {
+.stream-stage-body-scroll {
     flex: 1;
+    min-height: 0;
+    max-height: 220px;
+    overflow-y: auto;
+    padding-right: 0.4rem;
+}
+
+.stream-stage-body-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.stream-stage-body-scroll::-webkit-scrollbar-thumb {
+    background: rgba(64, 52, 35, 0.22);
+    border-radius: 999px;
+}
+
+.stream-stage-body {
     font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
     font-size: 0.84rem;
     line-height: 1.65;
@@ -650,6 +666,10 @@ body {
 @media (max-width: 920px) {
     .stream-stage-grid {
         grid-template-columns: 1fr;
+    }
+
+    .stream-stage-body-scroll {
+        max-height: 180px;
     }
 
     .message-user .message-content {
