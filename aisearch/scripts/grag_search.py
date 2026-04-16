@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import os
 import warnings
@@ -59,21 +60,36 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def search(query: str):
-    set_search = AISearch(endpoint_url=SPARQL_ENDPOINT, llm=llm)
+def search(query: str, stream: bool = False):
+    set_search = AISearch(endpoint_url=SPARQL_ENDPOINT, llm=llm, stream=stream)
     return query, set_search
 
 
-async def digest(query: str):
-    query, set_search = search(query)
-    output = await set_search.handle(query)
+async def digest(query: str, stream: bool = False):
+    query, set_search = search(query, stream=stream)
+    result = set_search.handle(query)
+    if stream:
+        output = ""
+        async for chunk in result:
+            output += chunk
+            print(chunk, end="", flush=True)
+        print()
+        return output
+
+    output = await result
     return output
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python grag_search.py '<query>'")
-        sys.exit(1)
-    query = sys.argv[1]
-    output = asyncio.run(digest(query))
-    print(output)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Search query")
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream the response incrementally",
+    )
+    args = parser.parse_args()
+
+    output = asyncio.run(digest(args.query, stream=args.stream))
+    if not args.stream:
+        print(output)

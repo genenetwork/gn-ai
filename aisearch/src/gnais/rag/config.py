@@ -97,4 +97,16 @@ class AnswerGenerator(dspy.Signature):
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
 
+class StreamAnswerGenerator(dspy.Signature):
+    """Generate a streamed natural language answer from SPARQL query results."""
+
+    original_query: str = dspy.InputField(desc="Query provided")
+    sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
+    chat_history: list = dspy.InputField(desc="History of conversation")
+    feedback: str = dspy.OutputField(
+        desc="System response to the query that has a list of detailed answers and the final answer"
+    )
+
+
 generate_response = dspy.Predict(AnswerGenerator)
+generate_response_stream = dspy.Predict(StreamAnswerGenerator)
