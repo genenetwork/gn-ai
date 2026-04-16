@@ -116,6 +116,16 @@ def _stream_status_markup(label: str, tone: str = "working") -> str:
     )
 
 
+def _stream_final_status_markup(message: str, tone: str = "waiting") -> str:
+    icon = "🔍" if tone == "waiting" else "✨"
+    return (
+        f"<div class='stream-final-status is-{tone}'>"
+        f"<div class='stream-final-status-icon'>{icon}</div>"
+        f"<div class='stream-final-status-text'>{escape(message)}</div>"
+        "</div>"
+    )
+
+
 @app.route("/")
 async def index():
     """Serve the AI search web interface."""
@@ -187,9 +197,19 @@ async def search_stream():
         )
 
     async def event_stream():
+        completed = set()
+        final_sent = False
+
         yield _format_sse("search_state", _stream_status_markup("Streaming", "working"))
+        yield _format_sse(
+            "final_html",
+            _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
+        )
         try:
             async for raw_event in hybrid_stream_search.handle(query):
+                if final_sent:
+                    break
+
                 event = json.loads(raw_event)
                 source = event.get("source")
                 kind = event.get("kind")
@@ -218,6 +238,16 @@ async def search_stream():
                         f"{source}_done",
                         _stream_status_markup("Error", "error"),
                     )
+                    completed.add(source)
+                    if len(completed) == 3 and not final_sent:
+                        yield _format_sse(
+                            "search_state",
+                            _stream_status_markup("Complete", "complete"),
+                        )
+                        yield _format_sse(
+                            "final_html",
+                            _stream_final_status_markup("Synthesizing final answer…", "synthesizing"),
+                        )
                     continue
 
                 if source in {"rag", "grag", "agent"} and kind == "done":
@@ -225,9 +255,20 @@ async def search_stream():
                         f"{source}_done",
                         _stream_status_markup("Complete", "complete"),
                     )
+                    completed.add(source)
+                    if len(completed) == 3 and not final_sent:
+                        yield _format_sse(
+                            "search_state",
+                            _stream_status_markup("Complete", "complete"),
+                            )
+                        yield _format_sse(
+                            "final_html",
+                            _stream_final_status_markup("Synthesizing final answer…", "synthesizing"),
+                        )
                     continue
 
                 if source == "hybrid" and kind == "final":
+                    final_sent = True
                     parsed_output = _parse_output(content)
                     grouped = {}
                     if parsed_output.get("results"):
