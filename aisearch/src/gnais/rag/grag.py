@@ -4,19 +4,22 @@ __all__ = (
     "AISearch",
 )
 
-import asyncio
-import os
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 
-from gnais.rag.config import generate_response, generate_sparql, reformat
+import dspy
+from gnais.rag.config import (
+    generate_response,
+    generate_response_stream,
+    generate_sparql,
+    reformat,
+)
 from gnais.rag.rag import extract_keywords
 from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.prompts import PromptTemplate
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -36,10 +39,12 @@ class AISearch:
 
     endpoint_url: str
     llm: Any
+    stream: bool = False
     rdf_classes: Any = field(init=False)
     rdf_properties: Any = field(init=False)
     rdf_graph: Any = field(init=False)
     lang_graph: Any = field(init=False)
+    stream_predict: Any = field(init=False)
 
     def __post_init__(self):
         # Get schema information for better SPARQL generation
@@ -55,15 +60,24 @@ class AISearch:
         graph_builder.add_edge(START, "chat")
         graph_builder.add_edge("chat", END)
         self.lang_graph = graph_builder.compile()
+        self.stream_predict = dspy.streamify(
+            generate_response_stream,
+            stream_listeners=[
+                dspy.streaming.StreamListener(signature_field_name="feedback")
+            ],
+            include_final_prediction_in_output_stream=False,
+        )
 
     def chat(self, state: State) -> Dict[str, Any]:
         """
         Address a natural language question
         """
-        query = state.get("messages")
-        chat_history = deepcopy(query)
-        new_query = deepcopy(query[-1].content)
-        new_query = extract_keywords(new_query)
+        predictor = generate_response_stream if self.stream else generate_response
+        kwargs = {"config": {"cache": False}} if self.stream else {}
+        response = predictor(**self._state_to_generation_inputs(state), **kwargs)
+        return {"messages": [self._prediction_feedback(response)]}
+
+    def _build_prompt(self, query: str) -> str:
         system_prompt = """
                You excel at addressing search query using the context and chat history you have. You do not make mistakes.
                Extract answers to the query below from the context and chat history. Use the chat history before moving to the context.
@@ -73,13 +87,9 @@ class AISearch:
                Trait id: 16339
                Dataset name: BXDPublish
                New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n"""
-        final_prompt = system_prompt + f"Query: {new_query}"
-        query_result = generate_sparql(
-            original_query=final_prompt,
-            classes_info=self.rdf_classes,
-            properties_info=self.rdf_properties,
-        )
-        sparql_queries = query_result.get("sparql_queries")
+        return system_prompt + f"Query: {query}"
+
+    def _run_sparql_queries(self, sparql_queries: list[str]) -> str:
         try:
             sparql = SPARQLWrapper(self.endpoint_url)
             sparql.setReturnFormat(JSON)
@@ -89,16 +99,35 @@ class AISearch:
                 results = sparql.queryAndConvert()
                 results = str(results["results"]["bindings"])
                 final_results.append(results)
-            final_results = str(final_results)
+            return str(final_results)
         except Exception as e:
-            final_results = f"Query failed: {str(e)}"
-        response = generate_response(
+            return f"Query failed: {str(e)}"
+
+    def _prepare_generation_inputs(
+        self, query: str, chat_history: list[BaseMessage]
+    ) -> dict[str, Any]:
+        keyword_query = extract_keywords(query)
+        final_prompt = self._build_prompt(keyword_query)
+        query_result = generate_sparql(
             original_query=final_prompt,
-            sparql_results=final_results,
-            chat_history=chat_history,
+            classes_info=self.rdf_classes,
+            properties_info=self.rdf_properties,
         )
-        response = str(response.get("feedback"))
-        return {"messages": [response]}
+        sparql_queries = query_result.get("sparql_queries")
+        return {
+            "original_query": final_prompt,
+            "sparql_results": self._run_sparql_queries(sparql_queries),
+            "chat_history": chat_history,
+        }
+
+    def _state_to_generation_inputs(self, state: State) -> dict[str, Any]:
+        messages = state.get("messages")
+        query = deepcopy(messages[-1].content)
+        chat_history = deepcopy(messages)
+        return self._prepare_generation_inputs(query, chat_history)
+
+    def _prediction_feedback(self, prediction: Any) -> str:
+        return str(prediction.get("feedback"))
 
     async def call_langgraph(self, query: str) -> Any:
         config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
@@ -107,10 +136,31 @@ class AISearch:
         )
         return result
 
-    async def handle(self, query: str) -> str:
+    async def _handle(self, query: str) -> str:
         result = await self.call_langgraph(query)
         result = result.get("messages")[-1].content
         reformatted = reformat(input_text=result).get(
             "result"
         )  # transform to valid nested dictionary
         return reformatted
+
+    async def _handle_stream(self, query: str):
+        output = self.stream_predict(
+            **self._prepare_generation_inputs(
+                query,
+                [HumanMessage(content=query)],
+            ),
+            config={"cache": False},
+        )
+        async for value in output:
+            if hasattr(value, "chunk"):
+                yield value.chunk
+            elif isinstance(value, dspy.Prediction):
+                feedback = self._prediction_feedback(value)
+                if feedback:
+                    yield feedback
+
+    def handle(self, query: str) -> Any:
+        if self.stream:
+            return self._handle_stream(query)
+        return self._handle(query)
