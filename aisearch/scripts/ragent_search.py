@@ -1,5 +1,6 @@
 """Main module of hybrid search for GeneNetwork"""
 import os
+import argparse
 import asyncio
 import sys
 import dspy
@@ -56,17 +57,31 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-async def digest(query: str):
-    search = HybridSearch()
-    async for message in search.stream_graph(query):
-        print(f"Intermediate: {message}")
-        final_result = message
-    return final_result
+async def digest(query: str, stream: bool = False):
+    search = HybridSearch(stream=stream)
+    result = search.handle(query)
+    if stream:
+        output = ""
+        async for chunk in result:
+            output += chunk
+            print(chunk, end="", flush=True)
+        print()
+        return output
+
+    output = await result
+    return output
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python ragent_search.py '<query>'")
-        sys.exit(1)
-    query = sys.argv[1]
-    output = asyncio.run(digest(query))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Search query")
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream the response incrementally",
+    )
+    args = parser.parse_args()
+
+    output = asyncio.run(digest(args.query, stream=args.stream))
+    if not args.stream:
+        print(output)
