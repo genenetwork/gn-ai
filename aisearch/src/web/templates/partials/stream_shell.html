@@ -31,11 +31,12 @@
             <section class="stream-stage-card is-muted">
                 <div class="stream-stage-head">
                     <span class="stream-stage-name">RAGSearch</span>
-                    <span class="stream-stage-state" sse-swap="rag_done" hx-swap="innerHTML">
+                    <span class="stream-stage-state" sse-swap="rag_done" hx-swap="innerHTML" hx-on:htmx:after-swap="this.closest('.stream-stage-card').querySelector('.stream-init-msg').style.display='none'">
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
                 <div class="stream-stage-body-scroll" sse-swap="rag_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-init-msg">Initializing search…</div>
                     <div class="stream-stage-body" sse-swap="rag_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
                 </div>
             </section>
@@ -43,11 +44,12 @@
             <section class="stream-stage-card is-muted">
                 <div class="stream-stage-head">
                     <span class="stream-stage-name">GraphRAGSearch</span>
-                    <span class="stream-stage-state" sse-swap="grag_done" hx-swap="innerHTML">
+                    <span class="stream-stage-state" sse-swap="grag_done" hx-swap="innerHTML" hx-on:htmx:after-swap="this.closest('.stream-stage-card').querySelector('.stream-init-msg').style.display='none'">
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
                 <div class="stream-stage-body-scroll" sse-swap="grag_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-init-msg">Initializing search…</div>
                     <div class="stream-stage-body" sse-swap="grag_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
                 </div>
             </section>
@@ -55,11 +57,12 @@
             <section class="stream-stage-card is-muted">
                 <div class="stream-stage-head">
                     <span class="stream-stage-name">AgentSearch</span>
-                    <span class="stream-stage-state" sse-swap="agent_done" hx-swap="innerHTML">
+                    <span class="stream-stage-state" sse-swap="agent_done" hx-swap="innerHTML" hx-on:htmx:after-swap="this.closest('.stream-stage-card').querySelector('.stream-init-msg').style.display='none'">
                         <span class="stream-stage-badge is-working">Running</span>
                     </span>
                 </div>
                 <div class="stream-stage-body-scroll" sse-swap="agent_final_html" hx-target="find .stream-stage-body" hx-swap="innerHTML" hx-on:htmx:after-swap="this.scrollTop = this.scrollHeight">
+                    <div class="stream-init-msg">Initializing search…</div>
                     <div class="stream-stage-body" sse-swap="agent_chunk" hx-target="this" hx-swap="beforeend" hx-on:htmx:after-swap="this.parentElement.scrollTop = this.parentElement.scrollHeight"></div>
                 </div>
             </section>
@@ -71,8 +74,9 @@
                 <span class="stream-final-note">Rendered after the three systems complete</span>
             </div>
             <div class="stream-final-body" sse-swap="final_html" hx-swap="innerHTML">
-                <div class="stream-final-placeholder">
-                    Synthesizing the final answer...
+                <div class="stream-final-status is-waiting">
+                    <div class="stream-final-status-icon">🔍</div>
+                    <div class="stream-final-status-text">Waiting for searches to complete…</div>
                 </div>
             </div>
         </section>
