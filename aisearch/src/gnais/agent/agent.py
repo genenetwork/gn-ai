@@ -69,19 +69,27 @@ class ReactSig(dspy.Signature):
     solution: ListInformation = dspy.OutputField(desc="The answer to the query")
 
 
+class StreamReactSig(dspy.Signature):
+    query: str = dspy.InputField()
+    solution: str = dspy.OutputField(
+        desc="The answer to the query with detailed answers and the final answer"
+    )
+
+
 class AISearch(dspy.Module):
-    def __init__(self):
+    def __init__(self, stream: bool = False):
         super().__init__()
         self.tools = [fetch_data]
+        signature = StreamReactSig if stream else ReactSig
 
         self.react = dspy.ReAct(
-            signature=ReactSig,
+            signature=signature,
             tools=self.tools,
             max_iters=20,  # maximum number of steps for reasoning and tool calling
         )
 
-    def forward(self, query: str):
-        return self.react(query=query)
+    def forward(self, query: str, **kwargs):
+        return self.react(query=query, **kwargs)
 
 
 class State(TypedDict):
@@ -90,17 +98,31 @@ class State(TypedDict):
 
 @dataclass
 class Digest:
+    stream: bool = False
+    search: Any = field(init=False)
+    stream_search: Any = field(init=False)
     graph: Any = field(init=False)
 
     def __post_init__(self):
+        self.search = AISearch(stream=self.stream)
+        self.stream_search = dspy.streamify(
+            self.search,
+            stream_listeners=[
+                dspy.streaming.StreamListener(
+                    signature_field_name="next_thought",
+                    allow_reuse=True,
+                ),
+                dspy.streaming.StreamListener(signature_field_name="solution"),
+            ],
+            include_final_prediction_in_output_stream=True,
+        )
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
         graph_builder.add_edge(START, "chat")
         graph_builder.add_edge("chat", END)
         self.graph = graph_builder.compile()
 
-    def chat(self, state: State) -> dict:
-        query = state.get("messages")
+    def _build_query(self, query: str) -> str:
         system_prompt = """
             You excel at addressing search query using the context you have. You do not make mistakes.
             Extract answers to the query from the context and provide links associated with each RDF entity.
@@ -110,9 +132,19 @@ class Digest:
             Dataset name: BXDPublish
             New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
             """
-        final_query = system_prompt + str(query)
-        search = AISearch()
-        output = search(query=final_query).get("solution")
+        return system_prompt + query
+
+    def _state_to_query(self, state: State) -> str:
+        messages = state.get("messages")
+        return self._build_query(str(messages[-1].content))
+
+    def _prediction_solution(self, prediction: Any) -> str:
+        return str(prediction.get("solution"))
+
+    def chat(self, state: State) -> dict:
+        final_query = self._state_to_query(state)
+        kwargs = {"config": {"cache": False}} if self.stream else {}
+        output = self.search(query=final_query, **kwargs).get("solution")
         output = str(output)
         return {"messages": [output]}
 
@@ -123,10 +155,28 @@ class Digest:
         )
         return result
 
-    async def handle(self, query: str) -> str:
+    async def _handle(self, query: str) -> str:
         result = await self.call_graph(query)
         result = result.get("messages")[-1].content
         reformatted = reformat(input_text=result).get(
             "result"
         )  # transform to valid nested dictionary
         return reformatted
+
+    async def _handle_stream(self, query: str):
+        output = self.stream_search(
+            query=self._build_query(query),
+            config={"cache": False},
+        )
+        async for value in output:
+            if hasattr(value, "chunk"):
+                yield value.chunk
+            elif isinstance(value, dspy.Prediction):
+                solution = self._prediction_solution(value)
+                if solution:
+                    yield solution
+
+    def handle(self, query: str) -> Any:
+        if self.stream:
+            return self._handle_stream(query)
+        return self._handle(query)
