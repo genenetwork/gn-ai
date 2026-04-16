@@ -1,5 +1,6 @@
 """This is the main module of the package using agent tool calling"""
 
+import argparse
 import torch
 import sys
 from gnais.agent.agent import *
@@ -53,16 +54,31 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-async def digest(query: str):
-    digest = Digest()
-    output = await digest.handle(query)
+async def digest(query: str, stream: bool = False):
+    digest = Digest(stream=stream)
+    result = digest.handle(query)
+    if stream:
+        output = ""
+        async for chunk in result:
+            output += chunk
+            print(chunk, end="", flush=True)
+        print()
+        return output
+
+    output = await result
     return output
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python agent_search.py '<query>'")
-        sys.exit(1)
-    query = sys.argv[1]
-    output = asyncio.run(digest(query))
-    print(output)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("query", help="Search query")
+    parser.add_argument(
+        "--stream",
+        action="store_true",
+        help="Stream the response incrementally",
+    )
+    args = parser.parse_args()
+
+    output = asyncio.run(digest(args.query, stream=args.stream))
+    if not args.stream:
+        print(output)
