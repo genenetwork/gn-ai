@@ -202,6 +202,13 @@ async def search_stream():
                     )
                     continue
 
+                if source in {"rag", "grag", "agent"} and kind == "final":
+                    yield _format_sse(
+                        f"{source}_final_html",
+                        str(content),
+                    )
+                    continue
+
                 if source in {"rag", "grag", "agent"} and kind == "error":
                     yield _format_sse(
                         f"{source}_chunk",
