@@ -17,7 +17,6 @@ from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.prompts import PromptTemplate
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -40,7 +39,6 @@ class AISearch:
     rdf_classes: Any = field(init=False)
     rdf_properties: Any = field(init=False)
     rdf_graph: Any = field(init=False)
-    memory: Any = field(init=False)
     lang_graph: Any = field(init=False)
 
     def __post_init__(self):
@@ -51,14 +49,12 @@ class AISearch:
             source_file=self.endpoint_url,
             standard="owl",
         )
-        # Instantiate memory
-        self.memory = MemorySaver()
         # Initialize langgraph
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
         graph_builder.add_edge(START, "chat")
         graph_builder.add_edge("chat", END)
-        self.lang_graph = graph_builder.compile(checkpointer=self.memory)
+        self.lang_graph = graph_builder.compile()
 
     def chat(self, state: State) -> Dict[str, Any]:
         """
