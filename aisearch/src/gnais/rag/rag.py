@@ -136,7 +136,7 @@ class AISearch:
         self.stream_predict = dspy.streamify(
             generate_stream,
             stream_listeners=[
-                dspy.streaming.StreamListener(signature_field_name="feedback")
+                dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
             ],
             include_final_prediction_in_output_stream=False,
         )
