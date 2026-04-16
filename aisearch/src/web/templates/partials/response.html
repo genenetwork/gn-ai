@@ -1,62 +1,7 @@
 <div class="message message-ai">
     <div class="avatar">AI</div>
     <div class="message-content">
-        <div class="ai-response">
-            {% if data.error or data.status == 'error' %}
-                <div class="status-error">Search encountered an error</div>
-                <div class="error-display">{{ data.error or data.message or 'Unknown error' }}</div>
-                {% if data.raw_response %}
-                    <div class="raw-response">
-                        <strong>Raw Response:</strong><br>
-                        {{ data.raw_response }}
-                    </div>
-                {% endif %}
-
-            {% else %}
-                {% if data.status == 'success' %}
-                    <div class="status-success">Search completed successfully</div>
-                {% elif data.status == 'partial_success' %}
-                    <div class="status-partial">Partial success - some data sources unavailable</div>
-                {% endif %}
-
-                {% if data.summary %}
-                    <div class="summary">{{ data.summary }}</div>
-                {% endif %}
-
-                {% if grouped and grouped|length > 0 %}
-                    {% for type, items in grouped.items() %}
-                        {% set display_type = type[0]|upper + type[1:] + 's' %}
-                        <h3>{{ display_type }} ({{ items|length }})</h3>
-                        <ul class="card-list">
-                            {% for item in items %}
-                                {% set url = item.url or item.link or '#' %}
-                                {% set name = item.name or item.symbol or item.trait_name or 'Unnamed' %}
-                                <li class="card-item">
-                                    <div class="card-title">
-                                        <a href="{{ url }}" target="_blank">{{ name }}</a>
-                                    </div>
-                                    {% if item.description %}
-                                        <div class="card-description">{{ item.description }}</div>
-                                    {% endif %}
-                                    {% if item.extra %}
-                                        <div class="card-meta">{{ item.extra }}</div>
-                                    {% endif %}
-                                </li>
-                            {% endfor %}
-                        </ul>
-                    {% endfor %}
-                {% else %}
-                    <div class="note-box">No specific results were found for this query.</div>
-                {% endif %}
-
-                {% if data.note %}
-                    <div class="note-box">{{ data.note }}</div>
-                {% endif %}
-                {% if data.access_note %}
-                    <div class="access-note">{{ data.access_note }}</div>
-                {% endif %}
-            {% endif %}
-        </div>
+        {% include "partials/response_body.html" %}
     </div>
     <button type="button" class="copy-btn"
             _="on click

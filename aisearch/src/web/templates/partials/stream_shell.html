@@ -1,0 +1,76 @@
+<div class="message message-user">
+    <div class="message-content">
+        {{ query }}
+    </div>
+</div>
+
+<div class="message message-ai message-ai-stream">
+    <div class="avatar">AI</div>
+    <div class="message-content stream-shell"
+         hx-ext="sse"
+         sse-connect="{{ url_for('search_stream') }}?q={{ query|urlencode }}"
+         sse-close="stream_end"
+         _="on htmx:sseMessage from me
+               wait 10ms
+               set #chat-container.scrollTop to #chat-container.scrollHeight">
+        <div class="stream-shell-header">
+            <div>
+                <div class="stream-shell-kicker">Live Research Trace</div>
+                <h2>Cross-checking RAG, GraphRAG, and AgentSearch</h2>
+            </div>
+            <div class="stream-shell-state" sse-swap="search_state" hx-swap="innerHTML">
+                <span class="stream-stage-badge is-working">Starting</span>
+            </div>
+        </div>
+
+        <div class="stream-shell-intro">
+            Intermediate system output stays muted while the final answer is assembled.
+        </div>
+
+        <div class="stream-stage-grid">
+            <section class="stream-stage-card is-muted">
+                <div class="stream-stage-head">
+                    <span class="stream-stage-name">RAGSearch</span>
+                    <span class="stream-stage-state" sse-swap="rag_done" hx-swap="innerHTML">
+                        <span class="stream-stage-badge is-working">Running</span>
+                    </span>
+                </div>
+                <div class="stream-stage-body" sse-swap="rag_chunk" hx-swap="beforeend"></div>
+            </section>
+
+            <section class="stream-stage-card is-muted">
+                <div class="stream-stage-head">
+                    <span class="stream-stage-name">GraphRAGSearch</span>
+                    <span class="stream-stage-state" sse-swap="grag_done" hx-swap="innerHTML">
+                        <span class="stream-stage-badge is-working">Running</span>
+                    </span>
+                </div>
+                <div class="stream-stage-body" sse-swap="grag_chunk" hx-swap="beforeend"></div>
+            </section>
+
+            <section class="stream-stage-card is-muted">
+                <div class="stream-stage-head">
+                    <span class="stream-stage-name">AgentSearch</span>
+                    <span class="stream-stage-state" sse-swap="agent_done" hx-swap="innerHTML">
+                        <span class="stream-stage-badge is-working">Running</span>
+                    </span>
+                </div>
+                <div class="stream-stage-body" sse-swap="agent_chunk" hx-swap="beforeend"></div>
+            </section>
+        </div>
+
+        <section class="stream-final-card">
+            <div class="stream-final-head">
+                <span class="stream-final-kicker">Final Answer</span>
+                <span class="stream-final-note">Rendered after the three systems complete</span>
+            </div>
+            <div class="stream-final-body" sse-swap="final_html" hx-swap="innerHTML">
+                <div class="stream-final-placeholder">
+                    Synthesizing the final answer...
+                </div>
+            </div>
+        </section>
+
+        <div hidden sse-swap="stream_end"></div>
+    </div>
+</div>

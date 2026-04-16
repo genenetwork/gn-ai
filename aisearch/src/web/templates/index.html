@@ -4,8 +4,9 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>GeneNetwork AI Search</title>
-        <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-        <script src="https://unpkg.com/hyperscript.org@0.9.91"></script>
+        <script src="https://unpkg.com/htmx.org@2.0.8"></script>
+        <script src="https://unpkg.com/htmx-ext-sse@2.2.4/sse.js"></script>
+        <script src="https://unpkg.com/hyperscript.org@0.9.12"></script>
         <link rel="stylesheet"
               href="{{ url_for('static', filename='css/style.css') }}">
     </head>
@@ -55,11 +56,18 @@
         <div class="input-container">
             <form class="input-wrapper"
                   id="search-form"
-                  hx-get="/search"
+                  hx-get="/search/stream-shell"
                   hx-target="#messages"
                   hx-swap="beforeend"
                   hx-indicator="#loading-indicator"
-                  _="on htmx:beforeRequest if no #search-input.value.trim() halt end call appendUserMessage(#search-input.value.trim()) set #search-input.value to '' put 'none' into #empty-state's style.display">
+                  _="on htmx:beforeRequest
+                         if no #search-input.value.trim() halt end
+                         put 'none' into #empty-state's style.display
+			 on htmx:afterRequest
+                         put '' into #search-input.value
+                         call #search-input.focus()
+                         wait 20ms
+                         set #chat-container.scrollTop to #chat-container.scrollHeight">
                 <input type="text"
                        name="q"
                        id="search-input"
@@ -74,19 +82,9 @@
             </form>
         </div>
         <script type="text/hyperscript">
-	 def appendUserMessage(query)
-	     append `
-<div class="message message-user">
-   <div class="message-content">
-     ${query}
-   </div>
-</div>
-	 ` to #messages
-	 end
-
 	 def focusInputAndScroll()
-	     call #search-input.focus()
-	     scroll to the bottom of #messages
+	 call #search-input.focus()
+	 set #chat-container.scrollTop to #chat-container.scrollHeight
 	 end
         </script>
     </body>
