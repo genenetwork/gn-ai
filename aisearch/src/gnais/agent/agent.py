@@ -133,7 +133,7 @@ class Digest:
             New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
-        return system_prompt + query
+        return f"{system_prompt}\n{query}"
 
     def _state_to_query(self, state: State) -> str:
         messages = state.get("messages")
