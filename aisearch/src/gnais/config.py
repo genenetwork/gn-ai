@@ -1,6 +1,4 @@
-__all__ = (
-    "Config",
-)
+__all__ = ("Config",)
 import os
 from dotenv import load_dotenv
 
@@ -31,7 +29,10 @@ class Config:
     MODEL_TYPE = int(os.environ.get("MODEL_TYPE"))
     if MODEL_TYPE is None:
         raise RuntimeError("MODEL_TYPE is not set")
-    if MODEL_TYPE not in (0, 1,):
+    if MODEL_TYPE not in (
+        0,
+        1,
+    ):
         raise ValueError("MODEL_TYPE must be 0 or 1")
 
     API_KEY = os.environ.get("API_KEY")

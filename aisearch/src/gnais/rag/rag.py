@@ -9,10 +9,7 @@ __all__ = (
     "classify_search",
 )
 
-import asyncio
 import json
-import os
-import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -65,6 +62,7 @@ Dataset name: BXDPublish
 New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
 Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
 """
+
 
 class State(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
@@ -137,7 +135,9 @@ class AISearch:
         self.stream_predict = dspy.streamify(
             generate_stream,
             stream_listeners=[
-                dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
+                dspy.streaming.StreamListener(
+                    signature_field_name="feedback", allow_reuse=True
+                )
             ],
             include_final_prediction_in_output_stream=True,
         )
