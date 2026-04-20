@@ -200,7 +200,7 @@ def uri_to_prefixed(uri: str) -> str:
     """Convert full URI to prefixed form."""
     for prefix, ns in PREFIXES.items():
         if uri.startswith(ns):
-            return f"{prefix}:{uri[len(ns):]}"
+            return f"{prefix}:{uri[len(ns) :]}"
     return uri
 
 
@@ -214,9 +214,7 @@ def triple_to_sentence(subj: str, pred: str, obj: str) -> str:
 
 
 def fetch_with_retry(
-    sparql: SPARQLWrapper,
-    max_retries: int = 3,
-    base_delay: float = 2.0
+    sparql: SPARQLWrapper, max_retries: int = 3, base_delay: float = 2.0
 ) -> Optional[Dict]:
     """Execute SPARQL query with retry logic and exponential backoff."""
     for attempt in range(max_retries):
@@ -225,8 +223,10 @@ def fetch_with_retry(
         except HTTPError as e:
             if e.code == 504 and attempt < max_retries - 1:
                 # Exponential backoff with jitter
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                print(f"    Timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s...")
+                delay = base_delay * (2**attempt) + random.uniform(0, 1)
+                print(
+                    f"    Timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s..."
+                )
                 time.sleep(delay)
             else:
                 raise
@@ -274,10 +274,7 @@ def fetch_count_for_type(type_pattern: str) -> int:
     return 0
 
 
-def fetch_by_type_pattern(
-    type_pattern: str,
-    page_size: int = 5000
-) -> List[Dict]:
+def fetch_by_type_pattern(type_pattern: str, page_size: int = 5000) -> List[Dict]:
     """Fetch triples for a specific type pattern using pagination.
 
     First gets the count, then calculates pages needed.
@@ -337,7 +334,9 @@ def fetch_by_type_pattern(
 
             # Progress indicator
             if (page + 1) % 5 == 0 or page == num_pages - 1:
-                print(f"    Fetched page {page + 1}/{num_pages} ({len(all_bindings)}/{total_count} triples) :: {type_pattern_to_filename(type_pattern)}")
+                print(
+                    f"    Fetched page {page + 1}/{num_pages} ({len(all_bindings)}/{total_count} triples) :: {type_pattern_to_filename(type_pattern)}"
+                )
 
             # Small delay between pages
             if page < num_pages - 1:
@@ -372,9 +371,7 @@ def build_sentences(grouped: Dict[str, List[Tuple[str, str]]]) -> List[str]:
 
 
 def process_type_query(
-    type_pattern: str,
-    output_dir: str,
-    page_size: int = 5000
+    type_pattern: str, output_dir: str, page_size: int = 5000
 ) -> Tuple[str, int, bool]:
     """Process a single type query and write results to a file.
 
@@ -424,21 +421,24 @@ def main():
         description="Fetch RDF triples as natural language, one file per type"
     )
     parser.add_argument(
-        "--output-dir", "-o",
+        "--output-dir",
+        "-o",
         default="metadata_output",
-        help="Output directory for JSON files (default: metadata_output)"
+        help="Output directory for JSON files (default: metadata_output)",
     )
     parser.add_argument(
-        "--workers", "-w",
+        "--workers",
+        "-w",
         type=int,
         default=2,
-        help="Number of parallel workers (default: 2, use 1 for sequential)"
+        help="Number of parallel workers (default: 2, use 1 for sequential)",
     )
     parser.add_argument(
-        "--page-size", "-p",
+        "--page-size",
+        "-p",
         type=int,
         default=5000,
-        help="Number of triples per page (default: 5000)"
+        help="Number of triples per page (default: 5000)",
     )
     args = parser.parse_args()
 
@@ -461,7 +461,9 @@ def main():
         # Parallel processing with limited workers
         with ThreadPoolExecutor(max_workers=args.workers) as executor:
             future_to_type = {
-                executor.submit(process_type_query, tq, args.output_dir, args.page_size): tq
+                executor.submit(
+                    process_type_query, tq, args.output_dir, args.page_size
+                ): tq
                 for tq in TYPE_QUERIES
             }
 

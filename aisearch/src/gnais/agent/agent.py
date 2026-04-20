@@ -1,17 +1,13 @@
 """Agent with sparql tool calling for AI search in GeneNetwork"""
 
-import asyncio
-import json
 import os
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import dspy
 from gnais.rag.config import ListInformation, reformat
 from gnais.utils import fetch_schema
-from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages

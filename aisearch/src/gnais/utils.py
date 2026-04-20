@@ -2,6 +2,7 @@
 
 from SPARQLWrapper import SPARQLWrapper, JSON
 
+
 def fetch_schema(endpoint_url: str):
     """Fetch schema (classes and properties) and return as rdflib Graph"""
     sparql = SPARQLWrapper(endpoint_url)
