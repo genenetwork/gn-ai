@@ -9,7 +9,8 @@ if dir is None:
 
 collection = {}
 
-files = [os.path.join(dir, file) for file in os.listdir(dir) if 'ttl' in file]
+files = [os.path.join(dir, file) for file in os.listdir(dir) if "ttl" in file]
+
 
 def clean(text) -> str:
     return text.strip(string.punctuation).strip()

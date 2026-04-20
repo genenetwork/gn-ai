@@ -1,8 +1,8 @@
 """Main module of hybrid search for GeneNetwork"""
+
 import os
 import argparse
 import asyncio
-import sys
 import dspy
 
 import torch
@@ -13,8 +13,7 @@ if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
 MODEL_NAME = os.getenv("MODEL_NAME")
 if MODEL_NAME is None:
-    raise ValueError(
-        "MODEL_NAME must be specified - either proprietary or local")
+    raise ValueError("MODEL_NAME must be specified - either proprietary or local")
 MODEL_TYPE = os.getenv("MODEL_TYPE")
 if MODEL_TYPE is None:
     raise ValueError("MODEL_TYPE must be specified")
@@ -41,8 +40,7 @@ if int(MODEL_TYPE) == 0:
 elif int(MODEL_TYPE) == 1:
     API_KEY = os.getenv("API_KEY")
     if API_KEY is None:
-        raise ValueError(
-            "Valid API_KEY must be specified to use the proprietary model")
+        raise ValueError("Valid API_KEY must be specified to use the proprietary model")
     llm = dspy.LM(
         MODEL_NAME,
         api_key=API_KEY,

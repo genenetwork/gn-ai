@@ -1,7 +1,6 @@
 import json
 import os
 import string
-from copy import copy
 
 dir = os.getenv("DIR")
 if dir is None:

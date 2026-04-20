@@ -28,6 +28,7 @@ from typing_extensions import Annotated, TypedDict
 
 class SearchResult(TypedDict):
     """Standardized search result schema with flexible results array"""
+
     query: str
     status: str  # "success" or "partial_success"
     summary: str
@@ -61,6 +62,7 @@ class Synthesis(dspy.Signature):
     - Put specific IDs or evidence in "extra" field
     - Group similar items together in the array
     """
+
     original_query: str = dspy.InputField()
     all_generation: list[BaseMessage] = dspy.InputField()
     final_synthesis: SearchResult = dspy.OutputField(
@@ -114,13 +116,16 @@ class HybridSearch:
         self.graph = self.initialize_graph()
 
     def _stream_event(self, source: str, kind: str, content: str = "") -> str:
-        return json.dumps(
-            {
-                "source": source,
-                "kind": kind,
-                "content": content,
-            }
-        ) + "\n"
+        return (
+            json.dumps(
+                {
+                    "source": source,
+                    "kind": kind,
+                    "content": content,
+                }
+            )
+            + "\n"
+        )
 
     async def _stream_component(
         self, source: str, search: Any, query: str, queue: asyncio.Queue
@@ -160,7 +165,9 @@ class HybridSearch:
 
     def augment(self, state: HybridState) -> dict:
         messages = deepcopy(state.get("messages"))
-        original_query = messages[-3].content # always take query that was used for the most recent run
+        original_query = messages[
+            -3
+        ].content  # always take query that was used for the most recent run
         response = synthesize(original_query=original_query, all_generation=messages)
         return {"messages": [json.dumps(response.get("final_synthesis"))]}
 

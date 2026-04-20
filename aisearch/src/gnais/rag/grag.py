@@ -1,8 +1,6 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
-__all__ = (
-    "AISearch",
-)
+__all__ = ("AISearch",)
 
 import uuid
 from copy import deepcopy

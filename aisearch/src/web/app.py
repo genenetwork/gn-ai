@@ -16,9 +16,9 @@ app = Quart(__name__)
 app.config.from_object(Config)
 
 # Set up template and static directories
-template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+template_dir = os.path.join(os.path.dirname(__file__), "templates")
 app.template_folder = template_dir
-static_dir = os.path.join(os.path.dirname(__file__), 'static')
+static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.static_folder = static_dir
 
 limiter = Limiter(
@@ -90,7 +90,9 @@ def _group_results(results):
     """Group search results by type (defaulting to 'Other')."""
     sorted_results = sorted(results, key=lambda r: r.get("type") or "Other")
     grouped = {}
-    for type_key, items in groupby(sorted_results, key=lambda r: r.get("type") or "Other"):
+    for type_key, items in groupby(
+        sorted_results, key=lambda r: r.get("type") or "Other"
+    ):
         grouped[type_key] = list(items)
     return grouped
 
@@ -109,11 +111,7 @@ def _stream_chunk_markup(content: str, error: bool = False) -> str:
 
 
 def _stream_status_markup(label: str, tone: str = "working") -> str:
-    return (
-        f"<span class='stream-stage-badge is-{tone}'>"
-        f"{escape(label)}"
-        "</span>"
-    )
+    return f"<span class='stream-stage-badge is-{tone}'>{escape(label)}</span>"
 
 
 def _stream_final_status_markup(message: str, tone: str = "waiting") -> str:
@@ -165,7 +163,9 @@ async def search_html():
     grouped = {}
     if parsed_output.get("results"):
         grouped = _group_results(parsed_output["results"])
-    return await render_template("partials/response.html", query=query, data=parsed_output, grouped=grouped)
+    return await render_template(
+        "partials/response.html", query=query, data=parsed_output, grouped=grouped
+    )
 
 
 @app.route("/search/stream-shell", methods=["GET"])
@@ -187,12 +187,17 @@ async def search_stream():
     query = request.args.get("q", "").strip()
     if not query:
         return Response(
-            _format_sse("final_html", "<div class='error-message'>Missing query parameter 'q'</div>"),
+            _format_sse(
+                "final_html",
+                "<div class='error-message'>Missing query parameter 'q'</div>",
+            ),
             mimetype="text/event-stream",
         )
     if len(query) > 1000:
         return Response(
-            _format_sse("final_html", "<div class='error-message'>Query too long</div>"),
+            _format_sse(
+                "final_html", "<div class='error-message'>Query too long</div>"
+            ),
             mimetype="text/event-stream",
         )
 
@@ -246,7 +251,9 @@ async def search_stream():
                         )
                         yield _format_sse(
                             "final_html",
-                            _stream_final_status_markup("Synthesizing final answer…", "synthesizing"),
+                            _stream_final_status_markup(
+                                "Synthesizing final answer…", "synthesizing"
+                            ),
                         )
                     continue
 
@@ -260,10 +267,12 @@ async def search_stream():
                         yield _format_sse(
                             "search_state",
                             _stream_status_markup("Complete", "complete"),
-                            )
+                        )
                         yield _format_sse(
                             "final_html",
-                            _stream_final_status_markup("Synthesizing final answer…", "synthesizing"),
+                            _stream_final_status_markup(
+                                "Synthesizing final answer…", "synthesizing"
+                            ),
                         )
                     continue
 
@@ -281,11 +290,7 @@ async def search_stream():
                     yield _format_sse("stream_end", "<div></div>")
                     return
         except Exception as exc:
-            error_html = (
-                "<div class='error-display'>"
-                f"{escape(str(exc))}"
-                "</div>"
-            )
+            error_html = f"<div class='error-display'>{escape(str(exc))}</div>"
             yield _format_sse("final_html", error_html)
             yield _format_sse("stream_end", "<div></div>")
 
@@ -300,6 +305,7 @@ async def search_stream():
     )
     response.timeout = None
     return response
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5001, debug=True)
