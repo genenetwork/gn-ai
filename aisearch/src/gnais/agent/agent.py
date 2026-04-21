@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import dspy
+import requests
 from gnais.rag.config import ListInformation, reformat
 from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
@@ -17,7 +18,6 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
 from typing_extensions import Annotated, TypedDict
-
 
 SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
 if SPARQL_ENDPOINT is None:
@@ -64,6 +64,29 @@ fetch_data = dspy.Tool(
 )
 
 
+def check_link(url: str) -> str:
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        if response.ok:
+            return f"Valid URL: {response.url}"
+        return f"Invalid URL: {response.url} - Error code: {response.status_code}"
+    except Exception as e:
+        return f"Invalid URL - Exception {e}"
+
+
+check_link = dspy.Tool(
+    name="check_link",
+    desc="Test URL and check if it resolves",
+    args={
+        "url": {
+            "type": "string",
+            "desc": "URL or link to check",
+        },
+    },
+    func=check_link,
+)
+
+
 class ReactSig(dspy.Signature):
     query: str = dspy.InputField()
     solution: ListInformation = dspy.OutputField(desc="The answer to the query")
@@ -79,7 +102,7 @@ class StreamReactSig(dspy.Signature):
 class AISearch(dspy.Module):
     def __init__(self, stream: bool = False):
         super().__init__()
-        self.tools = [fetch_data]
+        self.tools = [fetch_data, check_link]
         signature = StreamReactSig if stream else ReactSig
 
         self.react = dspy.ReAct(
@@ -126,11 +149,7 @@ class Digest:
         system_prompt = """
             You excel at addressing search query using the context you have. You do not make mistakes.
             Extract answers to the query from the context and provide links associated with each RDF entity.
-            All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
-            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXD_16339
-            Trait id: 16339
-            Dataset name: BXDPublish
-            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
+            You should provide all links available. But before returning links, always check that they are valid. When a link or URL is not valid, you must fix it.
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return f"{system_prompt}\n{query}"
