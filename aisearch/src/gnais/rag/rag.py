@@ -248,6 +248,7 @@ class AISearch:
         retrieved_docs = self.ensemble_retriever.invoke(query)
         return {
             "input_text": SYSTEM_PROMPT + "\n" + query,
+            "chat_history": chat_history,
             "context": retrieved_docs,
         }
 
