@@ -89,7 +89,7 @@ class AISearch:
     pcorpus_path: str
     db_path: str
     user_store: UserStore
-    user_id: str = "default"
+    user_id: str = f"default_{uuid.uuid5(uuid.NAMESPACE_DNS, "user")}"
     stream: bool = False
     keyword_weight: float = 0.5
     docs: list = field(init=False)
@@ -254,6 +254,12 @@ class AISearch:
 
     def _state_to_generation_inputs(self, state: State) -> dict[str, Any]:
         query = state.get("messages")[-1].content
+        self.user_store.save_info(
+            user_id=self.user_id,
+            info_type="question",
+            content=query,
+            metadata={"source": "user_message", "message": query},
+        )
         chat_history = self.user_store.get_info(self.user_id, query)
         return self._prepare_generation_inputs(query, chat_history)
 
@@ -261,9 +267,9 @@ class AISearch:
         response = str(prediction.get("feedback"))
         self.user_store.save_info(
             user_id=self.user_id,
-            info_type="fact",
+            info_type="answer",
             content=response,
-            metadata={"source": "ai_message", "raw_message": response},
+            metadata={"source": "ai_message", "message": response},
         )
         return response
 
@@ -272,7 +278,7 @@ class AISearch:
         return {"messages": [self._prediction_feedback(response)]}
 
     async def call_graph(self, query: str) -> Any:
-        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
+        config = {"configurable": {"thread_id": self.user_id}}
         result = await self.graph.ainvoke(
             {"messages": [HumanMessage(content=query)]}, config
         )
