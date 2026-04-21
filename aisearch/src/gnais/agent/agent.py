@@ -66,10 +66,10 @@ fetch_data = dspy.Tool(
 
 def check_link(url: str) -> str:
     try:
-        test = requests.head(url, allow_redirects=True, timeout=10)
-        if test.status_code == 405:
-            test = requests.get(url, allow_redirects=True, timeout=10)
-        return f"Valid URL: {test.url}"
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        if response.ok:
+            return f"Valid URL: {response.url}"
+        return f"Invalid URL: {response.url} - Error code: {response.status_code}"
     except Exception as e:
         return f"Invalid URL - Exception {e}"
 
