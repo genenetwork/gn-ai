@@ -14,17 +14,18 @@ import json
 import os
 import time
 import uuid
-from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from chromadb.config import Settings
 import dspy
-from gnais.rag.config import classify, extract, generate, reformat, generate_stream
+from chromadb.config import Settings
+from gnais.rag.config import classify, extract, generate, generate_stream, reformat
+from gnais.utils import UserStore
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_huggingface import HuggingFaceEmbeddings
 from langgraph.graph import END, START, StateGraph
@@ -66,6 +67,7 @@ New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXD
 Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
 """
 
+
 class State(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
 
@@ -86,6 +88,8 @@ class AISearch:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    user_store: UserStore
+    user_id: str = "default"
     stream: bool = False
     keyword_weight: float = 0.5
     docs: list = field(init=False)
@@ -137,7 +141,9 @@ class AISearch:
         self.stream_predict = dspy.streamify(
             generate_stream,
             stream_listeners=[
-                dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
+                dspy.streaming.StreamListener(
+                    signature_field_name="feedback", allow_reuse=True
+                )
             ],
             include_final_prediction_in_output_stream=True,
         )
@@ -237,23 +243,28 @@ class AISearch:
         return self._chat_response(state, predictor, **kwargs)
 
     def _prepare_generation_inputs(
-        self, query: str, chat_history: list[BaseMessage]
+        self, query: str, chat_history: list[Document]
     ) -> dict[str, Any]:
         retrieved_docs = self.ensemble_retriever.invoke(query)
         return {
             "input_text": SYSTEM_PROMPT + "\n" + query,
-            "chat_history": chat_history,
             "context": retrieved_docs,
         }
 
     def _state_to_generation_inputs(self, state: State) -> dict[str, Any]:
-        messages = state.get("messages")
-        query = deepcopy(messages[-1].content)
-        chat_history = deepcopy(messages)
+        query = state.get("messages")[-1].content
+        chat_history = self.user_store.get_info(self.user_id, query)
         return self._prepare_generation_inputs(query, chat_history)
 
     def _prediction_feedback(self, prediction: Any) -> str:
-        return str(prediction.get("feedback"))
+        response = str(prediction.get("feedback"))
+        self.user_store.save_info(
+            user_id=self.user_id,
+            info_type="fact",
+            content=response,
+            metadata={"source": "ai_message", "raw_message": response},
+        )
+        return response
 
     def _chat_response(self, state: State, predictor: Any, **kwargs) -> dict:
         response = predictor(**self._state_to_generation_inputs(state), **kwargs)
