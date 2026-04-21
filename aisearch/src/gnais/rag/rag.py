@@ -20,8 +20,6 @@ from typing import Any
 
 import dspy
 from chromadb.config import Settings
-from gnais.rag.config import classify, extract, generate, generate_stream, reformat
-from gnais.utils import UserStore
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
@@ -32,6 +30,9 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
+
+from gnais.rag.config import classify, extract, generate, generate_stream, reformat
+from gnais.utils import UserStore
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -294,11 +295,17 @@ class AISearch:
 
     async def _handle_stream(self, query: str):
         """Yield incremental text updates for a query."""
+        self.user_store.save_info(
+            user_id=self.user_id,
+            info_type="question",
+            content=query,
+            metadata={"source": "user_message", "message": query},
+        )
+        chat_history = self.user_store.get_info(self.user_id, query, top_k=10)
+        inputs = self._prepare_generation_inputs(query, chat_history)
+
         output = self.stream_predict(
-            **self._prepare_generation_inputs(
-                query,
-                [HumanMessage(content=query)],
-            ),
+            **inputs,
             config={"cache": False},
         )
         async for value in output:
