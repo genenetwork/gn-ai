@@ -65,7 +65,7 @@ class UserStore:
     def __init__(
         self,
         collection_name: str = "default",
-        persist_directory: str = "./chroma_db",
+        persist_directory: str = "./session_chroma_db",
         embedding_model: str = "Qwen/Qwen3-Embedding-0.6B",
     ):
         self.client = chromadb.PersistentClient(
