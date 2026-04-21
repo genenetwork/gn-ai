@@ -12,6 +12,7 @@ from typing import Annotated, Any, Dict, List, Optional, TypedDict
 import chromadb
 from chromadb.config import Settings
 from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
 from SPARQLWrapper import JSON, SPARQLWrapper
 
@@ -82,7 +83,7 @@ class UserStore:
     def save_info(
         self,
         user_id: str,
-        info_type: str,  # eg. "fact", "history", "preference",
+        info_type: str,
         content: str,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> str:
