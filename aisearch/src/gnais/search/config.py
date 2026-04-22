@@ -4,21 +4,6 @@ import dspy
 from pydantic import BaseModel, Field
 
 
-class Classification(dspy.Signature):
-    input_text: str = dspy.InputField()
-    decision: str = dspy.OutputField(desc='"keyword" or "semantic"')
-
-
-classify = dspy.Predict(Classification)
-
-
-class Extraction(dspy.Signature):
-    input_text: str = dspy.InputField()
-    keywords: str = dspy.OutputField()
-
-
-extract = dspy.Predict(Extraction)
-
 
 class Information(BaseModel):
     """Extract relevant information for query"""

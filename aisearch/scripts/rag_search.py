@@ -7,7 +7,10 @@ import warnings
 
 import dspy
 import torch
-from gnais.search.rag import AISearch, classify_search, extract_keywords
+from gnais.search.rag import AISearch
+from gnais.search.corpus import get_docs, init_chroma_db, get_chroma_db, create_ensemble_retriever
+from gnais.search.classification import extract_keywords, classify_search
+
 
 warnings.filterwarnings("ignore")
 
@@ -69,31 +72,25 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 def search(query: str, stream: bool = False):
     task_type = classify_search(query)
+    chroma_db = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
+    search = AISearch(
+        stream=stream,
+        ensemble_retriever=None
+    )
+    docs = get_docs(CORPUS_PATH)
     if task_type.get("decision") == "keyword":
         print("\nSettled on keyword-ish search!")
         query = extract_keywords(query)
         query = query.get("keywords")
-        # Run a targeted search
-        set_search = AISearch(
-            corpus_path=CORPUS_PATH,
-            pcorpus_path=PCORPUS_PATH,
-            db_path=DB_PATH,
-            keyword_weight=0.7,
-            stream=stream,
-        )
+        search.ensemble_retriever = create_ensemble_retriever(chroma_db=chroma_db, docs=docs, keyword_weight=0.7)
     else:
-        set_search = AISearch(
-            corpus_path=CORPUS_PATH,
-            pcorpus_path=PCORPUS_PATH,
-            db_path=DB_PATH,
-            stream=stream,
-        )
-    return query, set_search
+        search.ensemble_retriever = create_ensemble_retriever(chroma_db=chroma_db, docs=docs)
+    return query, search
 
 
 async def digest(query: str, stream: bool = False):
-    query, set_search = search(query, stream=stream)
-    result = set_search.handle(query)
+    query, _search = search(query, stream=stream)
+    result = _search.handle(query)
     if stream:
         output = ""
         async for chunk in result:
