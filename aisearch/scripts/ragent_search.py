@@ -6,7 +6,7 @@ import asyncio
 import dspy
 
 import torch
-from gnais.ragent import HybridSearch
+from gnais.search import HybridSearch
 
 SEED = os.getenv("SEED")
 if SEED is None:

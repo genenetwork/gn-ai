@@ -8,13 +8,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict
 
 import dspy
-from gnais.rag.config import (
+from gnais.search.config import (
     generate_response,
     generate_response_stream,
     generate_sparql,
     reformat,
 )
-from gnais.rag.rag import extract_keywords
+from gnais.search.rag import extract_keywords
 from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
