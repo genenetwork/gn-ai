@@ -18,7 +18,7 @@ from typing import Any
 import dspy
 from gnais.search.agent import Digest as AgentSearch
 from gnais.config import Config
-from gnais.search.grag import AISearch as GraphRAGSearch
+from gnais.search.grag import GraphRAGSearch
 from gnais.search.rag import RAGSearch
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
