@@ -14,7 +14,7 @@ from gnais.search.config import (
     generate_sparql,
     reformat,
 )
-from gnais.search.rag import extract_keywords
+from gnais.search.classification import extract_keywords
 from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
