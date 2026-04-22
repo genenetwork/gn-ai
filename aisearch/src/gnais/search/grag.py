@@ -36,7 +36,6 @@ class GraphRAGSearch:
     """
 
     endpoint_url: str
-    llm: Any
     stream: bool = False
     rdf_classes: Any = field(init=False)
     rdf_properties: Any = field(init=False)
