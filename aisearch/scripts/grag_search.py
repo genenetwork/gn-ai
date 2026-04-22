@@ -5,7 +5,7 @@ import warnings
 
 import dspy
 import torch
-from gnais.search.grag import AISearch
+from gnais.search.grag import GraphRAGSearch
 
 warnings.filterwarnings("ignore")
 
@@ -58,7 +58,7 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str, stream: bool = False):
-    set_search = AISearch(endpoint_url=SPARQL_ENDPOINT, llm=llm, stream=stream)
+    set_search = GraphRAGSearch(endpoint_url=SPARQL_ENDPOINT, llm=llm, stream=stream)
     return query, set_search
 
 

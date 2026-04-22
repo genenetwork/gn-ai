@@ -29,7 +29,7 @@ class State(TypedDict):
 
 
 @dataclass
-class AISearch:
+class GraphRAGSearch:
     """
     Represent GraphRAG system that queries RDF directly using SPARQL generation for AISearch
     No text conversion or vector embeddings needed
