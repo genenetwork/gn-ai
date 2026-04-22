@@ -4,7 +4,7 @@ Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
 __all__ = (
-    "AISearch",
+    "RAGSearch",
 )
 
 import json
