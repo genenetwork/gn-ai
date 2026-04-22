@@ -9,7 +9,7 @@ from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
-from gnais.ragent import HybridSearch
+from gnais.search import HybridSearch
 from markupsafe import escape
 
 app = Quart(__name__)

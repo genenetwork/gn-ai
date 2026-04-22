@@ -7,7 +7,7 @@ import warnings
 
 import dspy
 import torch
-from gnais.rag.rag import AISearch, classify_search, extract_keywords
+from gnais.search.rag import AISearch, classify_search, extract_keywords
 
 warnings.filterwarnings("ignore")
 

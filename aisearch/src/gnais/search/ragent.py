@@ -16,10 +16,10 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import dspy
-from gnais.agent.agent import Digest as AgentSearch
+from gnais.search.agent import Digest as AgentSearch
 from gnais.config import Config
-from gnais.rag.grag import AISearch as GraphRAGSearch
-from gnais.rag.rag import AISearch as RAGSearch
+from gnais.search.grag import AISearch as GraphRAGSearch
+from gnais.search.rag import AISearch as RAGSearch
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages

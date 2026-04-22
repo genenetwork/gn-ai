@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import dspy
-from gnais.rag.config import ListInformation, reformat
+from gnais.search.config import ListInformation, reformat
 from gnais.utils import fetch_schema
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph

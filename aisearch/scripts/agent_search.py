@@ -6,7 +6,7 @@ import os
 
 import dspy
 import torch
-from gnais.agent.agent import Digest
+from gnais.search.agent import Digest
 
 SEED = os.getenv("SEED")
 if SEED is None:
