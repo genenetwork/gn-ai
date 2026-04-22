@@ -18,7 +18,7 @@ from typing import Any
 
 from chromadb.config import Settings
 import dspy
-from gnais.rag.config import classify, extract, generate, reformat, generate_stream
+from gnais.search.config import classify, extract, generate, reformat, generate_stream
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma

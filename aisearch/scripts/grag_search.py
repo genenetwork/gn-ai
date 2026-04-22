@@ -5,7 +5,7 @@ import warnings
 
 import dspy
 import torch
-from gnais.rag.grag import AISearch
+from gnais.search.grag import AISearch
 
 warnings.filterwarnings("ignore")
 
