@@ -21,11 +21,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
-from typing_extensions import Annotated, TypedDict
-
-
-class State(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+from gnais.search.config import State
 
 
 @dataclass
