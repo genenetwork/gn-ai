@@ -7,7 +7,7 @@ import warnings
 
 import dspy
 import torch
-from gnais.search.rag import GraphRagSearch
+from gnais.search.rag import RAGSearch
 from gnais.search.corpus import get_docs, init_chroma_db, get_chroma_db, create_ensemble_retriever
 from gnais.search.classification import extract_keywords, classify_search
 
@@ -73,7 +73,7 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 def search(query: str, stream: bool = False):
     task_type = classify_search(query)
     chroma_db = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
-    search = GraphRagSearch(
+    search = RAGSearch(
         stream=stream,
         ensemble_retriever=None
     )
