@@ -4,7 +4,6 @@ __all__ = ("AISearch",)
 
 import uuid
 from copy import deepcopy
-from dataclasses import dataclass, field
 from typing import Any, Dict
 
 import dspy
@@ -24,22 +23,14 @@ from SPARQLWrapper import JSON, SPARQLWrapper
 from gnais.search.config import State
 
 
-@dataclass
 class GraphRAGSearch:
     """
-    Represent GraphRAG system that queries RDF directly using SPARQL generation for AISearch
+    Represent GraphRAG system that queries RDF directly using SPARQL generation for AI Search
     No text conversion or vector embeddings needed
     """
-
-    endpoint_url: str
-    stream: bool = False
-    rdf_classes: Any = field(init=False)
-    rdf_properties: Any = field(init=False)
-    rdf_graph: Any = field(init=False)
-    lang_graph: Any = field(init=False)
-    stream_predict: Any = field(init=False)
-
-    def __post_init__(self):
+    def _init__(self, endpoint_url: str, stream: bool = False):
+        self.endpoint_url = endpoint_url
+        self.stream = stream
         # Get schema information for better SPARQL generation
         self.rdf_classes, self.rdf_properties = fetch_schema(self.endpoint_url)
         # Initialize rdf graph
