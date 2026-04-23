@@ -101,17 +101,28 @@ class AISearch:
     def _prepare_generation_inputs(
         self, query: str, chat_history: list[BaseMessage]
     ) -> dict[str, Any]:
-        keyword_query = extract_keywords(query)
-        final_prompt = self._build_prompt(keyword_query)
-        query_result = generate_sparql(
-            original_query=final_prompt,
+        semantic_prompt = self._build_prompt(query)
+        semantic_results = generate_sparql(
+            original_query=semantic_prompt,
             rdf_classes=self.rdf_classes,
             rdf_properties=self.rdf_properties,
             rdf_examples=self.rdf_examples,
         )
-        sparql_queries = query_result.get("sparql_queries")
+        semantic_queries = semantic_results.get("sparql_queries")
+
+        keyword_query = extract_keywords(query)
+        keyword_prompt = self._build_prompt(keyword_query)
+        keyword_results = generate_sparql(
+            original_query=keyword_prompt,
+            rdf_classes=self.rdf_classes,
+            rdf_properties=self.rdf_properties,
+            rdf_examples=self.rdf_examples,
+        )
+        keyword_queries = keyword_results.get("sparql_queries")
+
+        sparql_queries = semantic_queries + keyword_queries
         return {
-            "original_query": final_prompt,
+            "original_query": query,
             "sparql_results": self._run_sparql_queries(sparql_queries),
             "chat_history": chat_history,
         }
