@@ -18,7 +18,6 @@ from gnais.rag.config import (
 )
 from gnais.rag.rag import extract_keywords
 from gnais.utils import fetch_schema
-from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -40,20 +39,13 @@ class AISearch:
     endpoint_url: str
     llm: Any
     stream: bool = False
-    rdf_classes: Any = field(init=False)
-    rdf_properties: Any = field(init=False)
-    rdf_graph: Any = field(init=False)
+    rdf_schema: Any = field(init=False)
     lang_graph: Any = field(init=False)
     stream_predict: Any = field(init=False)
 
     def __post_init__(self):
         # Get schema information for better SPARQL generation
-        self.rdf_classes, self.rdf_properties = fetch_schema(self.endpoint_url)
-        # Initialize rdf graph
-        self.rdf_graph = RdfGraph(
-            source_file=self.endpoint_url,
-            standard="owl",
-        )
+        self.rdf_schema = fetch_schema(self.endpoint_url)
         # Initialize langgraph
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
@@ -111,8 +103,7 @@ class AISearch:
         final_prompt = self._build_prompt(keyword_query)
         query_result = generate_sparql(
             original_query=final_prompt,
-            classes_info=self.rdf_classes,
-            properties_info=self.rdf_properties,
+            schema_info=self.rdf_schema,
         )
         sparql_queries = query_result.get("sparql_queries")
         return {
