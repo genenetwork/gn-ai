@@ -34,7 +34,8 @@ dependencies = [
     "langchain-classic (>=1.0.2,<2.0.0)",    
     "langchain-huggingface (>=1.2.1,<2.0.0)",
     "quart (==0.20.0)",
-    "quart-flask-patch (==0.3.0)"
+    "quart-flask-patch (==0.3.0)",
+    "mem0ai[nlp] (>=0.1.0,<1.0.0)"
 ]
 
 [project.urls]
