@@ -39,13 +39,15 @@ class AISearch:
     endpoint_url: str
     llm: Any
     stream: bool = False
-    rdf_schema: Any = field(init=False)
+    rdf_classes: Any = field(init=False)
+    rdf_properties: Any = field(init=False)
+    rdf_examples: Any = field(init=False)
     lang_graph: Any = field(init=False)
     stream_predict: Any = field(init=False)
 
     def __post_init__(self):
         # Get schema information for better SPARQL generation
-        self.rdf_schema = fetch_schema(self.endpoint_url)
+        self.rdf_classes, self.rdf_properties, self.rdf_examples = fetch_schema(self.endpoint_url)
         # Initialize langgraph
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
@@ -103,7 +105,9 @@ class AISearch:
         final_prompt = self._build_prompt(keyword_query)
         query_result = generate_sparql(
             original_query=final_prompt,
-            schema_info=self.rdf_schema,
+            rdf_classes=self.rdf_classes,
+            rdf_properties=self.rdf_properties,
+            rdf_examples=self.rdf_examples,
         )
         sparql_queries = query_result.get("sparql_queries")
         return {

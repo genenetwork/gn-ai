@@ -8,7 +8,42 @@ def fetch_schema(endpoint_url: str):
     sparql.setReturnFormat(JSON)
 
     # Fetch classes
-    schema_query = """
+    classes_query = """
+    SELECT DISTINCT ?class ?label ?comment
+    WHERE {
+        { ?class a owl:Class }
+        UNION
+        { ?class a rdfs:Class }
+        OPTIONAL { ?class rdfs:label ?label }
+        OPTIONAL { ?class rdfs:comment ?comment }
+    }
+    """
+
+    sparql.setQuery(classes_query)
+    results = sparql.queryAndConvert()
+    classes = results["results"]["bindings"]
+
+    # Fetch properties
+    properties_query = """
+    SELECT DISTINCT ?prop ?domain ?range ?label
+    WHERE {
+        { ?prop a owl:ObjectProperty }
+        UNION
+        { ?prop a owl:DatatypeProperty }
+        UNION
+        { ?prop a rdf:Property }
+        OPTIONAL { ?prop rdfs:domain ?domain }
+        OPTIONAL { ?prop rdfs:range ?range }
+        OPTIONAL { ?prop rdfs:label ?label }
+    }
+    """
+
+    sparql.setQuery(properties_query)
+    results = sparql.queryAndConvert()
+    properties = results["results"]["bindings"]
+
+    # Fetch examples
+    example_query = """
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX owl: <http://www.w3.org/2002/07/owl#>
     SELECT ?subject ?predicate ?object
@@ -24,8 +59,8 @@ def fetch_schema(endpoint_url: str):
     }
     LIMIT 1000
     """
-    sparql.setQuery(schema_query)
+    sparql.setQuery(example_query)
     results = sparql.queryAndConvert()
-    schema = results["results"]["bindings"]
+    examples = results["results"]["bindings"]
     
-    return schema
+    return classes, properties, examples

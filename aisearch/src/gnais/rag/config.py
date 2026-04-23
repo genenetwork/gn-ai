@@ -78,9 +78,11 @@ class SPARQLGenerator(dspy.Signature):
     Use the provided schema to construct valid queries."""
 
     original_query: str = dspy.InputField(desc="User query")
-    schema_info: list = dspy.InputField(desc="Screenshot of SPARQL schema definition")
+    rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
+    rdf_properties: list = dspy.InputField(desc="RDF properties extracted from the graph")
+    rdf_examples: list = dspy.InputField(desc="Real RDF examples in the graph that you can use to build correct SPARQL queries")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
+        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query."
     )
 
 
