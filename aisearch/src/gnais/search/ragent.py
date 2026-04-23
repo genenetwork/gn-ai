@@ -13,15 +13,15 @@ import uuid
 import json
 from copy import deepcopy
 from dataclasses import dataclass, field
+from functools import partial
 from typing import Any
 
 import dspy
 from gnais.search.agent import Digest as AgentSearch
 from gnais.config import Config
-from gnais.search.grag import GraphRAGSearch
+from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.corpus import get_docs, get_chroma_db
-from functools import partial
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -97,34 +97,16 @@ class HybridSearch:
             chroma_db_path=Config.DB_PATH,
             embed_model="Qwen/Qwen3-Embedding-0.6B",
         )
+        _rag = partial(rag_search, docs=_rag_docs, chroma_db=_rag_chroma_db)
+        self.rag_search = _rag
+        self.rag_stream_search = _rag
 
-        async def _rag_sync(query: str) -> str:
-            result = ""
-            async for chunk in rag_search(
-                query=query, docs=_rag_docs, chroma_db=_rag_chroma_db
-            ):
-                if isinstance(chunk, dict) and "final" in chunk:
-                    result = chunk["final"]
-                else:
-                    result += str(chunk)
-            return result
+        # Bind GRAG to endpoint
+        _grag = partial(graph_rag_search, sparql_url=Config.SPARQL_ENDPOINT)
+        self.grag_search = _grag
+        self.grag_stream_search = _grag
 
-        self.rag_search = _rag_sync
-        self.rag_stream_search = partial(
-            rag_search, docs=_rag_docs, chroma_db=_rag_chroma_db
-        )
-
-        self.grag_search = GraphRAGSearch(
-            endpoint_url=Config.SPARQL_ENDPOINT,
-            llm=dspy.settings.lm,
-            stream=False,
-        )
         self.agent_search = AgentSearch(stream=False)
-        self.grag_stream_search = GraphRAGSearch(
-            endpoint_url=Config.SPARQL_ENDPOINT,
-            llm=dspy.settings.lm,
-            stream=True,
-        )
         self.agent_stream_search = AgentSearch(stream=True)
         self.graph = self.initialize_graph()
 
@@ -165,7 +147,11 @@ class HybridSearch:
         if hasattr(search, "handle"):
             response = await search.handle(query)
         else:
-            response = await search(query)
+            gen = search(query)
+            response = ""
+            async for chunk in gen:
+                if isinstance(chunk, dict) and "final" in chunk:
+                    response = chunk["final"]
         return response
 
     async def rag(self, state: HybridState) -> dict:
