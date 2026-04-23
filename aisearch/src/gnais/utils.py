@@ -22,7 +22,7 @@ def fetch_schema(endpoint_url: str):
     UNION { ?subject a owl:DatatypeProperty }
     ?subject ?predicate ?object
     }
-    LIMIT 5000
+    LIMIT 1000
     """
     sparql.setQuery(schema_query)
     results = sparql.queryAndConvert()
