@@ -58,7 +58,7 @@ dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
 def search(query: str, stream: bool = False):
-    set_search = GraphRAGSearch(endpoint_url=SPARQL_ENDPOINT, llm=llm, stream=stream)
+    set_search = GraphRAGSearch(endpoint_url=SPARQL_ENDPOINT, stream=stream)
     return query, set_search
 
 

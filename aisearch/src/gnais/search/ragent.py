@@ -19,7 +19,9 @@ import dspy
 from gnais.search.agent import Digest as AgentSearch
 from gnais.config import Config
 from gnais.search.grag import GraphRAGSearch
-from gnais.search.rag import RAGSearch
+from gnais.search.rag import rag_search
+from gnais.search.corpus import get_docs, get_chroma_db
+from functools import partial
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
@@ -89,24 +91,35 @@ class HybridSearch:
     graph: Any = field(init=False)
 
     def __post_init__(self):
-        self.rag_search = RAGSearch(
-            corpus_path=Config.CORPUS_PATH,
-            pcorpus_path=Config.PCORPUS_PATH,
-            db_path=Config.DB_PATH,
-            stream=False,
+        # Pre-load RAG corpus once and bind to rag_search
+        _rag_docs = get_docs(Config.CORPUS_PATH)
+        _rag_chroma_db = get_chroma_db(
+            chroma_db_path=Config.DB_PATH,
+            embed_model="Qwen/Qwen3-Embedding-0.6B",
         )
+
+        async def _rag_sync(query: str) -> str:
+            result = ""
+            async for chunk in rag_search(
+                query=query, docs=_rag_docs, chroma_db=_rag_chroma_db
+            ):
+                if isinstance(chunk, dict) and "final" in chunk:
+                    result = chunk["final"]
+                else:
+                    result += str(chunk)
+            return result
+
+        self.rag_search = _rag_sync
+        self.rag_stream_search = partial(
+            rag_search, docs=_rag_docs, chroma_db=_rag_chroma_db
+        )
+
         self.grag_search = GraphRAGSearch(
             endpoint_url=Config.SPARQL_ENDPOINT,
             llm=dspy.settings.lm,
             stream=False,
         )
         self.agent_search = AgentSearch(stream=False)
-        self.rag_stream_search = RAGSearch(
-            corpus_path=Config.CORPUS_PATH,
-            pcorpus_path=Config.PCORPUS_PATH,
-            db_path=Config.DB_PATH,
-            stream=True,
-        )
         self.grag_stream_search = GraphRAGSearch(
             endpoint_url=Config.SPARQL_ENDPOINT,
             llm=dspy.settings.lm,
@@ -131,7 +144,8 @@ class HybridSearch:
         self, source: str, search: Any, query: str, queue: asyncio.Queue
     ) -> None:
         try:
-            async for chunk in search.handle(query):
+            gen = search.handle(query) if hasattr(search, "handle") else search(query)
+            async for chunk in gen:
                 if isinstance(chunk, dict) and "final" in chunk:
                     await queue.put((source, "final", chunk["final"]))
                 else:
@@ -148,7 +162,10 @@ class HybridSearch:
         else:
             # provide access to memory for subsequent queries
             query = str(messages)
-        response = await search.handle(query)
+        if hasattr(search, "handle"):
+            response = await search.handle(query)
+        else:
+            response = await search(query)
         return response
 
     async def rag(self, state: HybridState) -> dict:
