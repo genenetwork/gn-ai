@@ -1,7 +1,9 @@
 from mem0 import Memory
 import datetime
+import functools
 import logging
 import os
+from typing import Any
 
 # mem0's internal history store can spew sqlite transaction warnings;
 # suppress them so they don't clutter CLI output.
@@ -9,6 +11,50 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
     logging.getLogger(_mem0_logger).addFilter(
         lambda record: "Failed to add history" not in record.getMessage()
     )
+
+
+def with_memory(func):
+    """Decorator that injects chat_history from mem0 and persists the interaction after streaming."""
+
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        query = kwargs.get("query", "")
+        memory = kwargs.get("memory")
+        user_id = kwargs.get("user_id", "default_user")
+
+        # Pre: search memories and build chat_history
+        chat_history = []
+        memory_tools = None
+        if memory is not None:
+            memory_tools = MemoryTools(memory)
+            try:
+                memories = memory_tools.search_memories(query, user_id=user_id)
+                if memories and not any(
+                    marker in memories
+                    for marker in ("No relevant memories found", "Error searching memories")
+                ):
+                    chat_history = [memories]
+            except Exception:
+                pass
+
+        kwargs["chat_history"] = chat_history
+
+        # Run the original async generator and collect the full response
+        full_response = ""
+        async for chunk in func(*args, **kwargs):
+            if isinstance(chunk, dict) and "final" in chunk:
+                full_response = chunk["final"]
+            yield chunk
+        if memory_tools is not None and full_response:
+            try:
+                memory_tools.store_memory(
+                    f"User query: {query}\nSystem response: {full_response}",
+                    user_id=user_id,
+                )
+            except Exception:
+                pass
+
+    return wrapper
 
 
 class MemoryTools:
