@@ -1,11 +1,12 @@
 import argparse
 import asyncio
 import os
+import sys
 import warnings
 
 import dspy
 import torch
-from gnais.search.grag import GraphRAGSearch
+from gnais.search.grag import graph_rag_search
 
 warnings.filterwarnings("ignore")
 
@@ -54,32 +55,14 @@ elif int(MODEL_TYPE) == 1:
 else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
-dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
-
-
-def search(query: str, stream: bool = False):
-    set_search = GraphRAGSearch(endpoint_url=SPARQL_ENDPOINT, stream=stream)
-    return query, set_search
+dspy.configure(lm=llm)
 
 
 async def digest(query: str, stream: bool = False):
-    query, set_search = search(query, stream=stream)
-    result = set_search.handle(query)
-    if stream:
-        output = ""
-        async for chunk in result:
-            if isinstance(chunk, dict) and "final" in chunk:
-                final = chunk["final"]
-                output = final
-                print(final, end="", flush=True)
-            else:
-                output += chunk
-                print(chunk, end="", flush=True)
-        print()
-        return output
-
-    output = await result
-    return output
+    async for chunk in graph_rag_search(query=query, sparql_url=SPARQL_ENDPOINT):
+        print(chunk, end="", flush=True)
+    print()
+    print("Done")
 
 
 if __name__ == "__main__":
@@ -92,6 +75,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    output = asyncio.run(digest(args.query, stream=args.stream))
-    if not args.stream:
-        print(output)
+    asyncio.run(digest(args.query, stream=args.stream))
