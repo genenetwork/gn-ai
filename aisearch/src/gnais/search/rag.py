@@ -6,7 +6,7 @@ Embedding model = Qwen/Qwen3-Embedding-0.6B
 import dspy
 from gnais.search.classification import classify_search
 from gnais.search.corpus import create_ensemble_retriever
-from gnais.search.tools import MemoryTools
+from gnais.search.tools import with_memory
 from typing import Any
 
 
@@ -53,12 +53,14 @@ Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>
 """
 
 
+@with_memory
 async def rag_search(
     query: str,
     docs: Any,
     chroma_db: Any,
     memory: Any = None,
     user_id: str = "default_user",
+    chat_history: list = [],
 ):
     if classify_search(query).get("decision") == "keyword":
         ensemble_retriever = create_ensemble_retriever(
@@ -68,18 +70,6 @@ async def rag_search(
         ensemble_retriever = create_ensemble_retriever(
             chroma_db=chroma_db, docs=docs
         )
-
-    chat_history, memory_tools = [], None
-    if memory is not None:
-        memory_tools = MemoryTools(memory)
-        try:
-            memories = memory_tools.search_memories(query, user_id=user_id)
-            if memories and not any(
-                marker in memories for marker in ("No relevant memories found", "Error searching memories")
-            ):
-                chat_history = [memories]
-        except Exception:
-            pass
 
     prompt = f"{_SYSTEM_PROMPT}\nQuery: {query}"
 
@@ -93,7 +83,6 @@ async def rag_search(
         include_final_prediction_in_output_stream=True,
     )
 
-    full_response = ""
     async for value in predict(
             input_text=prompt,
             chat_history=chat_history,
@@ -102,16 +91,4 @@ async def rag_search(
         if isinstance(value, dspy.Prediction):
             yield {"final": value.feedback}
         else:
-            chunk = getattr(value, "chunk", str(value))
-            full_response += chunk
-            yield chunk
-
-    # Persist the interaction in memory after streaming completes
-    if memory_tools is not None:
-        try:
-            memory_tools.store_memory(
-                f"User query: {query}\nSystem response: {full_response}",
-                user_id=user_id,
-            )
-        except Exception:
-            pass
+            yield getattr(value, "chunk", str(value))
