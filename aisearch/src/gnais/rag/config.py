@@ -78,8 +78,7 @@ class SPARQLGenerator(dspy.Signature):
     Use the provided schema to construct valid queries."""
 
     original_query: str = dspy.InputField(desc="User query")
-    classes_info: str = dspy.InputField(desc="Mapping for available classes")
-    properties_info: str = dspy.InputField(desc="Mapping for available properties")
+    schema_info: list = dspy.InputField(desc="Screenshot of SPARQL schema definition")
     sparql_queries: list[str] = dspy.OutputField(
         desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
     )
