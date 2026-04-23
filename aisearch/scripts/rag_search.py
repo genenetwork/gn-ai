@@ -7,7 +7,9 @@ import warnings
 
 import dspy
 import torch
-from gnais.search.rag import RAGSearch
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
+from gnais.search.rag import rag_search
 from gnais.search.corpus import get_docs, init_chroma_db, get_chroma_db, create_ensemble_retriever
 from gnais.search.classification import extract_keywords, classify_search
 
@@ -70,44 +72,6 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-def search(query: str, stream: bool = False):
-    task_type = classify_search(query)
-    chroma_db = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
-    search = RAGSearch(
-        stream=stream,
-        ensemble_retriever=None
-    )
-    docs = get_docs(CORPUS_PATH)
-    if task_type.get("decision") == "keyword":
-        print("\nSettled on keyword-ish search!")
-        query = extract_keywords(query)
-        query = query.get("keywords")
-        search.ensemble_retriever = create_ensemble_retriever(chroma_db=chroma_db, docs=docs, keyword_weight=0.7)
-    else:
-        search.ensemble_retriever = create_ensemble_retriever(chroma_db=chroma_db, docs=docs)
-    return query, search
-
-
-async def digest(query: str, stream: bool = False):
-    query, _search = search(query, stream=stream)
-    result = _search.handle(query)
-    if stream:
-        output = ""
-        async for chunk in result:
-            if isinstance(chunk, dict) and "final" in chunk:
-                final = chunk["final"]
-                output = final
-                print(final, end="", flush=True)
-            else:
-                output += chunk
-                print(chunk, end="", flush=True)
-        print()
-        return output
-
-    output = await result
-    return output
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("query", help="Search query")
@@ -118,6 +82,46 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    output = asyncio.run(digest(args.query, stream=args.stream))
-    if not args.stream:
-        print(output)
+    memory_config = MemoryConfig(
+        llm={
+            "provider": "litellm",
+            "config": {
+                "model": "moonshot/kimi-k2-0711-preview",
+                "temperature": 0.1,
+                "max_tokens": 2_000,
+            },
+        },
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+            },
+        },
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "path": os.path.join(DB_PATH, "rag_mem0_chroma"),
+            },
+        },
+        history_store={
+            "provider": "sqlite",
+            "config": {
+                "path": os.path.join(DB_PATH, "rag_mem0_history.db"),
+            },
+        },
+    )
+    memory = Memory(config=memory_config)
+
+    async def _consume():
+        async for chunk in rag_search(
+                query=args.query,
+                chroma_db=get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B"),
+                docs=get_docs(CORPUS_PATH),
+                memory=memory,
+        ):
+            print(chunk, end="", flush=True)
+        print()
+        print("Done")
+
+    asyncio.run(_consume())

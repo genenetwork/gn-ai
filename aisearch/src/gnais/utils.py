@@ -42,5 +42,4 @@ def fetch_schema(endpoint_url: str):
     sparql.setQuery(properties_query)
     results = sparql.queryAndConvert()
     properties = results["results"]["bindings"]
-
     return classes, properties

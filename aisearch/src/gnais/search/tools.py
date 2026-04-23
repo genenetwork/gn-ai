@@ -68,7 +68,3 @@ class MemoryTools:
             return "Memory deleted successfully."
         except Exception as e:
             return f"Error deleting memory: {str(e)}"
-
-def get_current_time() -> str:
-    """Get the current date and time."""
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
