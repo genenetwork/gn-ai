@@ -46,8 +46,10 @@ def fetch_schema(endpoint_url: str):
     example_query = """
     PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
     PREFIX owl: <http://www.w3.org/2002/07/owl#>
-    SELECT ?subject ?predicate ?object
+    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+    SELECT (SAMPLE(?subject) AS ?subject) ?predicate ?object
     WHERE {
+    {
     { ?subject a rdfs:Class }
     UNION { ?subject a owl:Class }
     UNION { ?subject rdfs:domain ?object }
@@ -56,8 +58,22 @@ def fetch_schema(endpoint_url: str):
     UNION { ?subject a owl:ObjectProperty }
     UNION { ?subject a owl:DatatypeProperty }
     ?subject ?predicate ?object
+    FILTER (?predicate != skos:member)
     }
-    LIMIT 1000
+    UNION
+    {
+    SELECT ?subject ?predicate (SAMPLE(?obj) AS ?object)
+    WHERE {
+    ?subject skos:member ?obj .
+    BIND(skos:member AS ?predicate)
+    BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
+    FILTER (?subject != ?obj)
+    }
+    GROUP BY ?subject ?predicate ?stem
+    }
+    }
+    GROUP BY ?predicate ?object
+    ORDER BY ?predicate ?object
     """
     sparql.setQuery(example_query)
     results = sparql.queryAndConvert()
