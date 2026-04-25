@@ -78,7 +78,9 @@ reformat = dspy.Predict(Reformat)
 
 
 class SemanticReformulation(dspy.Signature):
-    """Pick examples in the provided list that are semantically related to the user query and reformulate differently query using extracted terms for better search"""
+    """Pick examples in the provided list that are semantically related to the user query and reformulate differently query using extracted terms for better search.
+    Reformulated queries should not yet be a SPARQL query.
+    Example: What is known about http://rdf.genenetwork.org/v1/id/phenotype_Skeletal_muscular__Grip_strength__mean_peak_force_of_3_trials_in_B6_BXD_F1_males_and_females_at_6_months_of_age_on_normal_chow_diet__all_Nash_Annex_cases___newtons_"""
 
     original_query: str = dspy.InputField(desc="User query")
     examples: list = dspy.InputField(desc="List of examples showing terms available in RDF")
@@ -94,7 +96,7 @@ class SPARQLGenerator(dspy.Signature):
     """Generate a SPARQL SELECT query from a natural language question.
     Use the provided schema to construct valid queries."""
 
-    original_query: str = dspy.InputField(desc="User query")
+    original_query: str = dspy.InputField()
     rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
     rdf_properties: list = dspy.InputField(
         desc="RDF properties extracted from the graph"
@@ -103,7 +105,7 @@ class SPARQLGenerator(dspy.Signature):
         desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
     )
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query using RDF examples as baseline."
+        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query using RDF examples as baseline"
     )
 
 
