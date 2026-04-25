@@ -51,13 +51,17 @@ class Generation(dspy.Signature):
     context: list = dspy.InputField(desc="Background information")
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
+
 class StreamGeneration(dspy.Signature):
     """Wrap generation interface"""
 
     input_text: str = dspy.InputField(desc="Query and instructions")
     chat_history: list = dspy.InputField(desc="History of conversation")
     context: list = dspy.InputField(desc="Background information")
-    feedback: str = dspy.OutputField(desc="System response to the query that has a list of detailed answers and the final answer")
+    feedback: str = dspy.OutputField(
+        desc="System response to the query that has a list of detailed answers and the final answer"
+    )
+
 
 generate = dspy.Predict(Generation)
 generate_stream = dspy.Predict(StreamGeneration)
@@ -73,16 +77,33 @@ class Reformat(dspy.Signature):
 reformat = dspy.Predict(Reformat)
 
 
+class SemanticReformulation(dspy.Signature):
+    """Pick examples in the provided list that are semantically related to the user query and reformulate differently query using extracted terms for better search"""
+
+    original_query: str = dspy.InputField(desc="User query")
+    examples: list = dspy.InputField(desc="List of examples showing terms available in RDF")
+    reformulated_queries: list[str] = dspy.OutputField(
+        desc="List of reformulated queries from original terms using semantically close terms from the list of examples"
+    )
+
+
+reformulate = dspy.Predict(SemanticReformulation)
+
+
 class SPARQLGenerator(dspy.Signature):
     """Generate a SPARQL SELECT query from a natural language question.
     Use the provided schema to construct valid queries."""
 
     original_query: str = dspy.InputField(desc="User query")
     rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
-    rdf_properties: list = dspy.InputField(desc="RDF properties extracted from the graph")
-    rdf_examples: list = dspy.InputField(desc="Real RDF examples in the graph that you can use to build correct SPARQL queries")
+    rdf_properties: list = dspy.InputField(
+        desc="RDF properties extracted from the graph"
+    )
+    rdf_examples: list = dspy.InputField(
+        desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
+    )
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query."
+        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query using RDF examples as baseline."
     )
 
 
