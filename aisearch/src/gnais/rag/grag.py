@@ -75,19 +75,19 @@ class AISearch:
         return {"messages": [self._prediction_feedback(response)]}
 
     def _run_sparql_queries(self, sparql_queries: list[str]) -> str:
-            sparql = SPARQLWrapper(self.endpoint_url)
-            sparql.setReturnFormat(JSON)
-            final_results = []
-            for sparql_query in sparql_queries:
-                try:
-                    sparql.setQuery(sparql_query)
-                    results = sparql.queryAndConvert()
-                    results = str(results["results"]["bindings"])
-                    final_results.append(results)
-                    time.sleep(5)
-                except:
-                    continue
-            return str(final_results)
+        sparql = SPARQLWrapper(self.endpoint_url)
+        sparql.setReturnFormat(JSON)
+        final_results = []
+        for sparql_query in sparql_queries:
+            try:
+                sparql.setQuery(sparql_query)
+                results = sparql.queryAndConvert()
+                results = str(results["results"]["bindings"])
+                final_results.append(results)
+                time.sleep(5)
+            except:
+                continue
+        return str(final_results)
 
     def _prepare_generation_inputs(
         self, query: str, chat_history: list[BaseMessage]
@@ -95,7 +95,7 @@ class AISearch:
         keyword_prompt = f"""Using extracted keywords, build SPARQL SELECT queries to efficiently fetch relevant information and address the previous query.
         Query: {query}
         Keywords: {extract_keywords(query)}."""
-        
+
         keyword_results = generate_sparql(
             original_query=keyword_prompt,
             rdf_classes=self.rdf_classes,
@@ -104,7 +104,7 @@ class AISearch:
         )
         keyword_queries = keyword_results.get("sparql_queries")
         sparql_queries = keyword_queries
-        
+
         reformulated_queries = reformulate(
             original_query=query, examples=self.rdf_examples
         ).get("reformulated_queries")
@@ -123,6 +123,7 @@ class AISearch:
         return {
             "requirements": """You excel at addressing search query using information you have. You do not make mistakes.
             Extract answers to the query from the sparql results and chat history. Use the chat history before moving to the results.
+            Provide links associated with each RDF entity.
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.""",
             "original_query": query,
             "sparql_results": self._run_sparql_queries(sparql_queries),
