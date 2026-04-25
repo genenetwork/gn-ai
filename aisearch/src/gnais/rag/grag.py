@@ -91,7 +91,6 @@ class AISearch:
         self, query: str, chat_history: list[BaseMessage]
     ) -> dict[str, Any]:
         keyword_prompt = f"""Using extracted keywords, build SPARQL SELECT queries to efficiently fetch relevant information and address the previous query.
-        Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
         Query: {query}
         Keywords: {extract_keywords(query)}."""
         
@@ -109,7 +108,6 @@ class AISearch:
         ).get("reformulated_queries")
         for new_query in reformulated_queries:
             semantic_prompt = f"""Using the following query reformulated with terms in SPARQL, build better SPARQL SELECT queries to fetch relevant information from RDF.
-            Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             Query: {new_query}"""
             semantic_results = generate_sparql(
                 original_query=semantic_prompt,
@@ -121,6 +119,9 @@ class AISearch:
             sparql_queries += semantic_queries
 
         return {
+            "requirements": """You excel at addressing search query using information you have. You do not make mistakes.
+            Extract answers to the query from the sparql results and chat history. Use the chat history before moving to the results.
+            Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.""",
             "original_query": query,
             "sparql_results": self._run_sparql_queries(sparql_queries),
             "chat_history": chat_history,

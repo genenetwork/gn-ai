@@ -94,7 +94,8 @@ reformulate = dspy.Predict(SemanticReformulation)
 
 class SPARQLGenerator(dspy.Signature):
     """Generate a SPARQL SELECT query from a natural language question.
-    Use the provided schema to construct valid queries."""
+    Use the provided schema to construct valid queries. No syntax error will be accepted.
+    Check syntax of final queries before returning them."""
 
     original_query: str = dspy.InputField()
     rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
@@ -105,7 +106,7 @@ class SPARQLGenerator(dspy.Signature):
         desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
     )
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answer to the user query using RDF examples as baseline"
+        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using RDF examples as baseline"
     )
 
 
@@ -113,8 +114,9 @@ generate_sparql = dspy.Predict(SPARQLGenerator)
 
 
 class AnswerGenerator(dspy.Signature):
-    """Generate a natural language answer from SPARQL query results."""
+    """Generate a natural language answer from SPARQL query results and possible chat history."""
 
+    requirements: str = dspy.InputField(desc="Set of instructions you must tightly follow")
     original_query: str = dspy.InputField(desc="Query provided")
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
@@ -124,6 +126,7 @@ class AnswerGenerator(dspy.Signature):
 class StreamAnswerGenerator(dspy.Signature):
     """Generate a streamed natural language answer from SPARQL query results."""
 
+    requirements: str = dspy.InputField(desc="Set of instructions you must tightly follow")
     original_query: str = dspy.InputField(desc="Query provided")
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
