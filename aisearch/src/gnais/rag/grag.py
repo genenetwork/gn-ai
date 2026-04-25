@@ -2,6 +2,7 @@
 
 __all__ = ("AISearch",)
 
+import time
 import uuid
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -83,6 +84,7 @@ class AISearch:
                 results = sparql.queryAndConvert()
                 results = str(results["results"]["bindings"])
                 final_results.append(results)
+                time.sleep(5)
             return str(final_results)
         except Exception as e:
             return f"Query failed: {str(e)}"
