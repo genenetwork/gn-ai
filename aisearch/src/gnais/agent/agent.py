@@ -9,8 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import dspy
-from gnais.rag.config import ListInformation, reformat
-from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -18,6 +16,8 @@ from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
 from typing_extensions import Annotated, TypedDict
 
+from gnais.rag.config import ListInformation, reformat
+from gnais.utils import fetch_schema
 
 SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
 if SPARQL_ENDPOINT is None:
@@ -28,10 +28,15 @@ if SPARQL_ENDPOINT is None:
 
 class QueryTranslation(dspy.Signature):
     original_query: str = dspy.InputField()
-    rdf_classes: str = dspy.InputField()
-    rdf_properties: str = dspy.InputField()
+    rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
+    rdf_properties: list = dspy.InputField(
+        desc="RDF properties extracted from the graph"
+    )
+    rdf_examples: list = dspy.InputField(
+        desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
+    )
     translated_query: str = dspy.OutputField(
-        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema inferred from RDF schema"
+        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema"
     )
 
 
@@ -39,11 +44,12 @@ translate_query = dspy.Predict(QueryTranslation)
 
 
 def fetch_data(query: str) -> Any:
-    rdf_classes, rdf_properties = fetch_schema(SPARQL_ENDPOINT)
+    rdf_classes, rdf_properties, rdf_examples = fetch_schema(SPARQL_ENDPOINT)
     sparql_query = translate_query(
         original_query=query,
         rdf_classes=rdf_classes,
         rdf_properties=rdf_properties,
+        rdf_examples=rdf_examples,
     ).get("translated_query")
     sparql = SPARQLWrapper(SPARQL_ENDPOINT)
     sparql.setReturnFormat(JSON)
@@ -124,13 +130,8 @@ class Digest:
 
     def _build_query(self, query: str) -> str:
         system_prompt = """
-            You excel at addressing search query using the context you have. You do not make mistakes.
+            You excel at addressing search query using the information you have. You do not make mistakes.
             Extract answers to the query from the context and provide links associated with each RDF entity.
-            All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
-            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXD_16339
-            Trait id: 16339
-            Dataset name: BXDPublish
-            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return f"{system_prompt}\n{query}"
