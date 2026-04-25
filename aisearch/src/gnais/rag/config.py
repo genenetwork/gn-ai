@@ -95,7 +95,8 @@ reformulate = dspy.Predict(SemanticReformulation)
 class SPARQLGenerator(dspy.Signature):
     """Generate a SPARQL SELECT query from a natural language question.
     Use the provided schema to construct valid queries. No syntax error will be accepted.
-    Check syntax of final queries before returning them."""
+    Check the syntax and conformity to examples of the final queries before returning them.
+    Exclude any query that does not meet the expectations"""
 
     original_query: str = dspy.InputField()
     rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
@@ -106,7 +107,7 @@ class SPARQLGenerator(dspy.Signature):
         desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
     )
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Exhaustive SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using RDF examples as baseline"
+        desc="Exhaustive and valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using RDF examples as baseline"
     )
 
 

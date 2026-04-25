@@ -75,19 +75,19 @@ class AISearch:
         return {"messages": [self._prediction_feedback(response)]}
 
     def _run_sparql_queries(self, sparql_queries: list[str]) -> str:
-        try:
             sparql = SPARQLWrapper(self.endpoint_url)
             sparql.setReturnFormat(JSON)
             final_results = []
             for sparql_query in sparql_queries:
-                sparql.setQuery(sparql_query)
-                results = sparql.queryAndConvert()
-                results = str(results["results"]["bindings"])
-                final_results.append(results)
-                time.sleep(5)
+                try:
+                    sparql.setQuery(sparql_query)
+                    results = sparql.queryAndConvert()
+                    results = str(results["results"]["bindings"])
+                    final_results.append(results)
+                    time.sleep(5)
+                except:
+                    continue
             return str(final_results)
-        except Exception as e:
-            return f"Query failed: {str(e)}"
 
     def _prepare_generation_inputs(
         self, query: str, chat_history: list[BaseMessage]
