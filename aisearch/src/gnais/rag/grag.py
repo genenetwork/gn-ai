@@ -1,8 +1,6 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
-__all__ = (
-    "AISearch",
-)
+__all__ = ("AISearch",)
 
 import uuid
 from copy import deepcopy
@@ -10,19 +8,21 @@ from dataclasses import dataclass, field
 from typing import Any, Dict
 
 import dspy
-from gnais.rag.config import (
-    generate_response,
-    generate_response_stream,
-    generate_sparql,
-    reformat,
-)
-from gnais.rag.rag import extract_keywords
-from gnais.utils import fetch_schema
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
 from typing_extensions import Annotated, TypedDict
+
+from gnais.rag.config import (
+    generate_response,
+    generate_response_stream,
+    generate_sparql,
+    reformat,
+    reformulate,
+)
+from gnais.rag.rag import extract_keywords
+from gnais.utils import fetch_schema
 
 
 class State(TypedDict):
@@ -47,7 +47,9 @@ class AISearch:
 
     def __post_init__(self):
         # Get schema information for better SPARQL generation
-        self.rdf_classes, self.rdf_properties, self.rdf_examples = fetch_schema(self.endpoint_url)
+        self.rdf_classes, self.rdf_properties, self.rdf_examples = fetch_schema(
+            self.endpoint_url
+        )
         # Initialize langgraph
         graph_builder = StateGraph(State)
         graph_builder.add_node("chat", self.chat)
@@ -71,19 +73,6 @@ class AISearch:
         response = predictor(**self._state_to_generation_inputs(state), **kwargs)
         return {"messages": [self._prediction_feedback(response)]}
 
-    def _build_prompt(self, query: str) -> str:
-        system_prompt = """
-               You excel at addressing search query using the context and chat history you have. You do not make mistakes.
-               Extract answers to the query below from the context and chat history. Use the chat history before moving to the context.
-               Provide links associated with each RDF entity. To build links you must replace RDF prefixes by namespaces using the schema provided.
-               All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
-               Original trait link: https://rdf.genenetwork.org/v1/id/trait_16339
-               Trait id: 16339
-               Dataset name: BXDPublish
-               New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
-               Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks."""
-        return f"{system_prompt}\n Query: {query}"
-
     def _run_sparql_queries(self, sparql_queries: list[str]) -> str:
         try:
             sparql = SPARQLWrapper(self.endpoint_url)
@@ -101,17 +90,10 @@ class AISearch:
     def _prepare_generation_inputs(
         self, query: str, chat_history: list[BaseMessage]
     ) -> dict[str, Any]:
-        semantic_prompt = self._build_prompt(query)
-        semantic_results = generate_sparql(
-            original_query=semantic_prompt,
-            rdf_classes=self.rdf_classes,
-            rdf_properties=self.rdf_properties,
-            rdf_examples=self.rdf_examples,
-        )
-        semantic_queries = semantic_results.get("sparql_queries")
-
-        keyword_query = extract_keywords(query)
-        keyword_prompt = self._build_prompt(keyword_query)
+        keyword_prompt = f"""Using extracted keywords, build SPARQL queries to efficiently fetch relevant information and address the previous query.
+        Query: {query}
+        Keywords: {extract_keywords(query)}."""
+        
         keyword_results = generate_sparql(
             original_query=keyword_prompt,
             rdf_classes=self.rdf_classes,
@@ -119,8 +101,23 @@ class AISearch:
             rdf_examples=self.rdf_examples,
         )
         keyword_queries = keyword_results.get("sparql_queries")
+        sparql_queries = keyword_queries
+        
+        reformulated_queries = reformulate(
+            original_query=query, examples=self.rdf_examples
+        ).get("reformulated_queries")
+        for new_query in reformulated_queries:
+            semantic_prompt = f"""Using the following query reformulated with terms in SPARQL, build better SPARQL queries to fetch relevant information from RDF.
+            Query: {new_query}"""
+            semantic_results = generate_sparql(
+                original_query=semantic_prompt,
+                rdf_classes=self.rdf_classes,
+                rdf_properties=self.rdf_properties,
+                rdf_examples=self.rdf_examples,
+            )
+            semantic_queries = semantic_results.get("sparql_queries")
+            sparql_queries += semantic_queries
 
-        sparql_queries = semantic_queries + keyword_queries
         return {
             "original_query": query,
             "sparql_results": self._run_sparql_queries(sparql_queries),
