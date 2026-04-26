@@ -6,8 +6,12 @@ import os
 
 import dspy
 import torch
-from gnais.search.agent import Digest
+from gnais.search.agent import agent_search
 
+
+SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+if SPARQL_ENDPOINT is None:
+    raise ValueError("SPARQL_ENDPOINT must be specified to access database")
 SEED = os.getenv("SEED")
 if SEED is None:
     raise ValueError("SEED must be specified for reproducibility")
@@ -55,36 +59,24 @@ else:
 dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
 
-async def digest(query: str, stream: bool = False):
-    digest = Digest(stream=stream)
-    result = digest.handle(query)
-    if stream:
-        output = ""
-        async for chunk in result:
-            if isinstance(chunk, dict) and "final" in chunk:
-                final = chunk["final"]
-                output = final
-                print(final, end="", flush=True)
-            else:
-                output += chunk
-                print(chunk, end="", flush=True)
-        print()
-        return output
-
-    output = await result
+async def digest(query: str):
+    output = ""
+    async for chunk in agent_search(query=query, sparql_url=SPARQL_ENDPOINT):
+        if isinstance(chunk, dict) and "final" in chunk:
+            final = chunk["final"]
+            output = final
+            print(final, end="", flush=True)
+        else:
+            output += chunk
+            print(chunk, end="", flush=True)
+    print()
     return output
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("query", help="Search query")
-    parser.add_argument(
-        "--stream",
-        action="store_true",
-        help="Stream the response incrementally",
-    )
     args = parser.parse_args()
 
-    output = asyncio.run(digest(args.query, stream=args.stream))
-    if not args.stream:
-        print(output)
+    output = asyncio.run(digest(args.query))
+    print(output)
