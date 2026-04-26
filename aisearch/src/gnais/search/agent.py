@@ -7,15 +7,12 @@ import dspy
 from gnais.search.tools import make_sparql_fetch_tool
 
 
-_SYSTEM_PROMPT = """You excel at addressing search query using the context you have. You do not make mistakes.
-Extract answers to the query from the context and provide links associated with each RDF entity.
-All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
-Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXD_16339
-Trait id: 16339
-Dataset name: BXDPublish
-New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
-
-Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
+_SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
+Links: expand ALL turtle prefixes before using in <a href>.
+EXamples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
+gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
+Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
+Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
 """
 
 

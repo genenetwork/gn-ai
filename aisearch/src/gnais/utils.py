@@ -4,11 +4,10 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 
 
 def fetch_schema(endpoint_url: str):
-    """Fetch schema (classes and properties) and return as rdflib Graph"""
+    """Fetch schema (classes and properties) and return as clean strings for LLM consumption."""
     sparql = SPARQLWrapper(endpoint_url)
     sparql.setReturnFormat(JSON)
 
-    # Fetch classes
     classes_query = """
     SELECT DISTINCT ?class ?label ?comment
     WHERE {
@@ -19,12 +18,9 @@ def fetch_schema(endpoint_url: str):
         OPTIONAL { ?class rdfs:comment ?comment }
     }
     """
-
     sparql.setQuery(classes_query)
-    results = sparql.queryAndConvert()
-    classes = results["results"]["bindings"]
+    classes = sparql.queryAndConvert()["results"]["bindings"]
 
-    # Fetch properties
     properties_query = """
     SELECT DISTINCT ?prop ?domain ?range ?label
     WHERE {
@@ -38,8 +34,38 @@ def fetch_schema(endpoint_url: str):
         OPTIONAL { ?prop rdfs:label ?label }
     }
     """
-
     sparql.setQuery(properties_query)
-    results = sparql.queryAndConvert()
-    properties = results["results"]["bindings"]
-    return classes, properties
+    properties = sparql.queryAndConvert()["results"]["bindings"]
+
+    # Format classes for LLM
+    lines = []
+    for c in classes:
+        uri = c.get("class", {}).get("value", "")
+        label = c.get("label", {}).get("value", "")
+        comment = c.get("comment", {}).get("value", "")
+        parts = [uri]
+        if label:
+            parts.append(f"label={label!r}")
+        if comment:
+            parts.append(f"comment={comment!r}")
+        lines.append("  " + " | ".join(parts))
+    classes_str = "\n".join(lines) if lines else "  (no classes found)"
+
+    # Format properties for LLM
+    lines = []
+    for p in properties:
+        uri = p.get("prop", {}).get("value", "")
+        label = p.get("label", {}).get("value", "")
+        domain = p.get("domain", {}).get("value", "")
+        range_ = p.get("range", {}).get("value", "")
+        parts = [uri]
+        if label:
+            parts.append(f"label={label!r}")
+        if domain:
+            parts.append(f"domain={domain}")
+        if range_:
+            parts.append(f"range={range_}")
+        lines.append("  " + " | ".join(parts))
+    properties_str = "\n".join(lines) if lines else "  (no properties found)"
+
+    return classes_str, properties_str

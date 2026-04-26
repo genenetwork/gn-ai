@@ -3,43 +3,49 @@
 import sys
 import dspy
 from gnais.search.classification import extract_keywords
-from gnais.search.tools import with_memory
-from gnais.utils import fetch_schema
+from gnais.search.tools import with_memory, _QUERY_HINTS, _SPARQL_PREFIXES
 from SPARQLWrapper import JSON, SPARQLWrapper
 
-_SYSTEM_PROMPT = """\
-You excel at addressing search query using the context and chat history you have. You do not make mistakes.
-Extract answers to the query below from the context and chat history. Use the chat history before moving to the context.
-Provide links associated with each RDF entity. To build links you must replace RDF prefixes by namespaces using the schema provided.
-All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
-Original trait link: https://rdf.genenetwork.org/v1/id/trait_16339
-Trait id: 16339
-Dataset name: BXDPublish
-New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
-
-Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks."""
+_SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
+Links: expand ALL turtle prefixes before using in <a href>.
+Examples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
+gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
+Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
+Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
+"""
 
 
 def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
-    try:
-        sparql = SPARQLWrapper(sparql_url)
-        sparql.setReturnFormat(JSON)
-        results = []
-        for sparql_query in sparql_queries:
+    sparql = SPARQLWrapper(sparql_url)
+    sparql.setReturnFormat(JSON)
+    results = []
+    for i, sparql_query in enumerate(sparql_queries, 1):
+        try:
             sparql.setQuery(sparql_query)
-            results.append(str(sparql.queryAndConvert()["results"]["bindings"]))
-        return str(results)
-    except Exception as e:
-        return f"Query failed: {str(e)}"
+            result = sparql.queryAndConvert()
+            bindings = result.get("results", {}).get("bindings", [])
+            results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+        except Exception as e:
+            results.append(
+                f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
+            )
+    return "\n\n".join(results)
 
 
 class SPARQLGenerator(dspy.Signature):
-    """Generate a SPARQL SELECT query from a natural language question.
-    Use the provided schema to construct valid queries."""
+    """Generate valid SPARQL SELECT queries from a natural language question.
+
+    CRITICAL RULES:
+    1. EVERY query MUST start with the PREFIX declarations provided above.
+    2. Only use prefixes that are declared above. Do NOT invent new prefixes.
+    3. Use the classes and properties from the schema to build the query.
+    4. Prefer simple SELECT ?s ?p ?o patterns when exploring.
+    5. When looking for traits, use gnt:has_trait_page to get direct URLs.
+    """
 
     original_query: str = dspy.InputField(desc="User query")
-    classes_info: str = dspy.InputField(desc="Mapping for available classes")
-    properties_info: str = dspy.InputField(desc="Mapping for available properties")
+    classes_info: str = dspy.InputField(desc="Available classes")
+    properties_info: str = dspy.InputField(desc="Available properties")
     sparql_queries: list[str] = dspy.OutputField(
         desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
     )
@@ -62,8 +68,6 @@ async def graph_rag_search(
     user_id: str = "default_user",
     chat_history: list = [],
 ):
-    rdf_classes, rdf_properties = fetch_schema(sparql_url)
-
     keywords_pred = extract_keywords(query)
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
@@ -71,8 +75,8 @@ async def graph_rag_search(
 
     sparql_gen = dspy.Predict(SPARQLGenerator)(
         original_query=prompt,
-        classes_info=rdf_classes,
-        properties_info=rdf_properties,
+        classes_info=_SPARQL_PREFIXES + "\n" + _QUERY_HINTS,
+        properties_info="See ontology hints above.",
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
     if sparql_queries is None:
