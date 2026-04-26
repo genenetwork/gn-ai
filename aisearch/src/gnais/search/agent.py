@@ -1,6 +1,7 @@
 """Agent with SPARQL tool calling for AI search in GeneNetwork"""
 
 import os
+from functools import lru_cache
 from typing import Any
 
 import dspy
@@ -23,12 +24,10 @@ class AgentSig(dspy.Signature):
     )
 
 
-async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM_PROMPT, user_id: str = "default_user"):
-    """Run agent-based search with SPARQL tool calling.
-
-    Yields stream chunks and a final prediction dict.
-    """
-    stream_react = dspy.streamify(
+@lru_cache(maxsize=2048)
+def _get_stream_react(sparql_url: str):
+    """Build (and cache) the streaming ReAct agent for a given SPARQL endpoint."""
+    return dspy.streamify(
         dspy.ReAct(
             signature=AgentSig,
             tools=[make_sparql_fetch_tool(sparql_url)],
@@ -43,6 +42,14 @@ async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM
         ],
         include_final_prediction_in_output_stream=True,
     )
+
+
+async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM_PROMPT, user_id: str = "default_user"):
+    """Run agent-based search with SPARQL tool calling.
+
+    Yields stream chunks and a final prediction dict.
+    """
+    stream_react = _get_stream_react(sparql_url)
 
     async for value in stream_react(
             query=f"{_SYSTEM_PROMPT}\n{query}",
