@@ -10,10 +10,6 @@ class Config:
     if CORPUS_PATH is None:
         raise RuntimeError("CORPUS_PATH is not set")
 
-    PCORPUS_PATH = os.environ.get("PCORPUS_PATH")
-    if PCORPUS_PATH is None:
-        raise RuntimeError("PCORPUS_PATH is not set")
-
     DB_PATH = os.environ.get("DB_PATH")
     if DB_PATH is None:
         raise RuntimeError("DB_PATH is not set")
