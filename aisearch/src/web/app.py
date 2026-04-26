@@ -1,8 +1,9 @@
 import os
+import uuid
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
-from quart import Quart, jsonify, request, render_template, Response
+from quart import Quart, jsonify, request, render_template, Response, session
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -12,6 +13,7 @@ from markupsafe import escape
 
 app = Quart(__name__)
 app.config.from_object(Config)
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(32))
 
 # Set up template and static directories
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -104,6 +106,8 @@ async def search_stream_shell():
         return "<div class='error-message'>Missing query parameter 'q'</div>", 400
     if len(query) > 1000:
         return "<div class='error-message'>Query too long</div>", 400
+    if "user_id" not in session:
+        session["user_id"] = str(uuid.uuid4())
     return await render_template("partials/stream_shell.html", query=query)
 
 
@@ -128,6 +132,11 @@ async def search_stream():
             mimetype="text/event-stream",
         )
 
+    user_id = session.get("user_id")
+    if not user_id:
+        session["user_id"] = str(uuid.uuid4())
+        user_id = session["user_id"]
+
     async def event_stream():
         completed = set()
         final_sent = False
@@ -138,7 +147,7 @@ async def search_stream():
             _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
         )
         try:
-            async for event in hybrid_search(query):
+            async for event in hybrid_search(query, user_id=user_id):
                 if final_sent:
                     break
 
