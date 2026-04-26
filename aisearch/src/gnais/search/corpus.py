@@ -2,6 +2,8 @@ import json
 from functools import lru_cache
 from typing import Any
 from pathlib import Path
+
+import torch
 from tqdm import tqdm
 from chromadb.config import Settings
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -28,7 +30,20 @@ def _docs_to_tuple(docs: list) -> tuple:
     return tuple(json.dumps(d, sort_keys=True) for d in docs)
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=4)
+def get_embed_model(model_name: str):
+    """Load (and cache) the embedding model so it is only instantiated once.
+
+    Automatically uses CUDA when a GPU is available, otherwise falls back to
+    CPU.  (sentence-transformers does not accept torch_dtype.)"""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    return HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs={"trust_remote_code": True, "device": device},
+    )
+
+
+@lru_cache(maxsize=2048)
 def _cached_bm25_retriever(docs_tuple: tuple, k: int):
     """Build (and cache) the BM25 retriever.  Tokenizing the corpus is
     expensive, so we only do it once per unique (docs, k) pair."""
@@ -39,16 +54,12 @@ def _cached_bm25_retriever(docs_tuple: tuple, k: int):
     )
 
 
-def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size: int = 1):
+def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size: int = 64):
     if not Path(path).exists():
         raise FileNotFoundError("corpus_path is not a valid path")
     db = Chroma(
         persist_directory=chroma_db_path,
-        embedding_function=HuggingFaceEmbeddings(
-            model_name=embed_model,
-            # We have NVIDIA
-            model_kwargs={"trust_remote_code": True, "device": "cuda:0"},
-        ),
+        embedding_function=get_embed_model(embed_model),
         client_settings=Settings(
             is_persistent=True,
             persist_directory=chroma_db_path,
@@ -72,10 +83,7 @@ def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size
 def get_chroma_db(chroma_db_path: str, embed_model=Any):
     return Chroma(
         persist_directory=chroma_db_path,
-        embedding_function=HuggingFaceEmbeddings(
-            model_name=embed_model,
-            model_kwargs={"trust_remote_code": True, "device": "cpu"},
-        ),
+        embedding_function=get_embed_model(embed_model),
         client_settings=Settings(
             is_persistent=True,
             persist_directory=chroma_db_path,
