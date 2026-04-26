@@ -1,3 +1,5 @@
+from functools import lru_cache
+
 import dspy
 
 
@@ -11,6 +13,7 @@ class Extraction(dspy.Signature):
     keywords: str = dspy.OutputField()
 
 
+@lru_cache(maxsize=2048)
 def extract_keywords(query: str) -> str:
     """Extract list of keywords from query
 
@@ -27,6 +30,7 @@ Produce a list of space separated keywords featured in the query below. Only ret
 {query}""")
 
 
+@lru_cache(maxsize=2048)
 def classify_search(query: str) -> str:
     """Classify user query as keyword search or semantic search
 
