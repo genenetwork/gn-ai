@@ -3,9 +3,9 @@ Module with RAG system for AI search in GeneNetwork
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
+import asyncio
+
 import dspy
-from gnais.search.classification import classify_search
-from gnais.search.corpus import create_ensemble_retriever
 from gnais.search.tools import with_memory
 from typing import Any
 
@@ -19,6 +19,15 @@ class RAG(dspy.Signature):
     )
 
 
+_RAG_STREAM = dspy.streamify(
+    dspy.Predict(RAG),
+    stream_listeners=[
+        dspy.streaming.StreamListener(
+            signature_field_name="feedback", allow_reuse=True
+        )
+    ],
+    include_final_prediction_in_output_stream=True,
+)
 
 _SYSTEM_PROMPT = """Answer from the context and chat history. Use chat history first.
 Links: expand ALL turtle prefixes before using in <a href>.
@@ -32,37 +41,19 @@ Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
 @with_memory
 async def rag_search(
     query: str,
-    docs: Any,
-    chroma_db: Any,
+    retriever: Any,
     memory: Any = None,
     user_id: str = "default_user",
     chat_history: list = [],
 ):
-    if classify_search(query).get("decision") == "keyword":
-        ensemble_retriever = create_ensemble_retriever(
-            chroma_db=chroma_db, docs=docs, keyword_weight=0.7
-        )
-    else:
-        ensemble_retriever = create_ensemble_retriever(
-            chroma_db=chroma_db, docs=docs
-        )
-
     prompt = f"{_SYSTEM_PROMPT}\nQuery: {query}"
 
-    predict = dspy.streamify(
-        dspy.Predict(RAG),
-        stream_listeners=[
-            dspy.streaming.StreamListener(
-                signature_field_name="feedback", allow_reuse=True
-            )
-        ],
-        include_final_prediction_in_output_stream=True,
-    )
+    context = await asyncio.to_thread(retriever.invoke, query)
 
-    async for value in predict(
+    async for value in _RAG_STREAM(
             input_text=prompt,
             chat_history=chat_history,
-            context=ensemble_retriever.invoke(query),
+            context=context,
     ):
         if isinstance(value, dspy.Prediction):
             yield {"final": value.feedback}

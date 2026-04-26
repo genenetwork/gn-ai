@@ -17,7 +17,8 @@ from gnais.search.agent import agent_search
 from gnais.config import Config
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
-from gnais.search.corpus import get_docs, get_chroma_db
+from gnais.search.classification import classify_search
+from gnais.search.corpus import get_docs, get_chroma_db, create_ensemble_retriever
 
 
 class SearchResult(TypedDict):
@@ -73,13 +74,29 @@ _synthesize = dspy.streamify(
     include_final_prediction_in_output_stream=True,
 )
 
-_rag_search = partial(
-    rag_search,
-    docs=get_docs(Config.CORPUS_PATH),
-    chroma_db=get_chroma_db(
-        chroma_db_path=Config.DB_PATH,
-        embed_model="Qwen/Qwen3-Embedding-0.6B",
-    ))
+_RAG_CHROMA_DB = get_chroma_db(
+    chroma_db_path=Config.DB_PATH,
+    embed_model="Qwen/Qwen3-Embedding-0.6B",
+)
+_RAG_DOCS = get_docs(Config.CORPUS_PATH)
+_RETRIEVER_KW = create_ensemble_retriever(
+    chroma_db=_RAG_CHROMA_DB, docs=_RAG_DOCS, keyword_weight=0.7
+)
+_RETRIEVER_SEM = create_ensemble_retriever(
+    chroma_db=_RAG_CHROMA_DB, docs=_RAG_DOCS, keyword_weight=0.5
+)
+
+
+async def _rag_search(query: str):
+    retriever = (
+        _RETRIEVER_KW
+        if classify_search(query).get("decision") == "keyword"
+        else _RETRIEVER_SEM
+    )
+    async for item in rag_search(query, retriever=retriever):
+        yield item
+
+
 _grag_search = partial(graph_rag_search, sparql_url=Config.SPARQL_ENDPOINT)
 _agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
 
