@@ -56,14 +56,6 @@ if not app.config.get("MODEL_TYPE"):
 
 dspy.configure(lm=dspy.LM(**LLM_CONFIG))
 
-async def _run_search(query: str) -> str:
-    """Run the hybrid search and return the final HTML string."""
-    async for event in hybrid_search(query):
-        if event["source"] == "hybrid" and event["kind"] == "final":
-            return event["content"]
-    return ""
-
-
 def _format_sse(event: str, data: str) -> str:
     lines = data.splitlines() or [""]
     payload = [f"event: {event}"]
