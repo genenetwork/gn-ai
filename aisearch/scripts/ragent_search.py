@@ -6,7 +6,12 @@ import asyncio
 import dspy
 
 import torch
-from gnais.search import HybridSearch
+from rich.console import Console
+from rich.columns import Columns
+from rich.live import Live
+from rich.panel import Panel
+from rich.text import Text
+from gnais.search.ragent import hybrid_search
 
 SEED = os.getenv("SEED")
 if SEED is None:
@@ -52,34 +57,113 @@ else:
     raise ValueError("MODEL_TYPE must be 0 or 1")
 
 
-dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
+dspy.configure(lm=llm)
 
 
-async def digest(query: str, stream: bool = False):
-    search = HybridSearch(stream=stream)
-    result = search.handle(query)
-    if stream:
-        output = ""
-        async for chunk in result:
-            output += chunk
-            print(chunk, end="", flush=True)
-        print()
-        return output
+class _HybridDisplay:
+    """Terminal UI with three live panels for RAG / GRAG / Agent."""
 
-    output = await result
-    return output
+    _COLORS = {
+        "rag": "cyan",
+        "grag": "green",
+        "agent": "yellow",
+        "synthesis": "magenta",
+    }
+
+    def __init__(self):
+        self._texts = {
+            "rag": Text("", end=""),
+            "grag": Text("", end=""),
+            "agent": Text("", end=""),
+            "synthesis": Text("", end=""),
+        }
+        self._status = {
+            "rag": "⏳ waiting",
+            "grag": "⏳ waiting",
+            "agent": "⏳ waiting",
+            "synthesis": "⏳ waiting",
+        }
+        self._live = Live(self._render(), refresh_per_second=10)
+
+    def _render(self):
+        panels = []
+        for src in ("rag", "grag", "agent", "synthesis"):
+            color = self._COLORS[src]
+            title = f"[bold {color}]{src.upper()}[/] — {self._status[src]}"
+            panels.append(
+                Panel(
+                    self._texts[src],
+                    title=title,
+                    border_style=color,
+                    expand=True,
+                )
+            )
+        return Columns(panels, equal=True)
+
+    def start(self):
+        self._live.start()
+
+    def stop(self):
+        self._live.stop()
+
+    def append(self, source: str, text: str):
+        if source in self._texts:
+            self._texts[source].append(text)
+        self._live.update(self._render())
+
+    def set_status(self, source: str, status: str):
+        if source in self._status:
+            self._status[source] = status
+        self._live.update(self._render())
+
+
+async def digest(query: str):
+    display = _HybridDisplay()
+    display.start()
+
+    final_html = None
+    try:
+        async for event in hybrid_search(query):
+            source = event["source"]
+            kind = event["kind"]
+            content = event["content"]
+
+            if source == "hybrid" and kind == "final":
+                final_html = content
+                break
+
+            if source == "synthesis" and kind == "chunk":
+                display.set_status(source, "🔄 synthesizing")
+                display.append(source, content)
+                continue
+
+            if kind == "chunk":
+                display.append(source, content)
+            elif kind == "final":
+                display.set_status(source, "✅ complete")
+                display.append(source, content)
+            elif kind == "error":
+                display.set_status(source, f"❌ error")
+                display.append(source, f"\n[ERROR] {content}\n")
+            elif kind == "done":
+                display.set_status(source, "✅ done")
+    finally:
+        display.stop()
+
+    console = Console()
+    console.print()
+    if final_html:
+        console.rule("[bold magenta]HYBRID SYNTHESIS[/bold magenta]")
+        console.print(final_html)
+    else:
+        console.print("[bold red]No final synthesis received.[/bold red]")
+    console.print()
+    return final_html
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("query", help="Search query")
-    parser.add_argument(
-        "--stream",
-        action="store_true",
-        help="Stream the response incrementally",
-    )
     args = parser.parse_args()
 
-    output = asyncio.run(digest(args.query, stream=args.stream))
-    if not args.stream:
-        print(output)
+    asyncio.run(digest(args.query))
