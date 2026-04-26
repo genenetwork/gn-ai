@@ -62,17 +62,18 @@ def get_chroma_db(chroma_db_path: str, embed_model=Any):
     )
 
 
-def create_ensemble_retriever(chroma_db: Any, docs: list, keyword_weight: float = 0.5):
+def create_ensemble_retriever(chroma_db: Any, docs: list, keyword_weight: float = 0.5, **kwargs):
     return EnsembleRetriever(
         retrievers=[
             # might need fine-tuning
-            chroma_db.as_retriever(search_kwargs={"k": 20}),
+            chroma_db.as_retriever(search_kwargs={"k": kwargs.get("k") if kwargs.get("k") else 20}),
             BM25Retriever.from_texts(
                 texts=docs,
                 metadatas=[{"source": f"Document {ind + 1}"} for ind in range(len(docs))],
-                k=20,  # might need finetuning
+                k=kwargs.get("k") if kwargs.get("k") else 20,  # might need finetuning
             ),
         ],
-        weights=[1 - keyword_weight, keyword_weight],
+        weights=kwargs.get("weights") if kwargs.get("weights") else [1 - keyword_weight, keyword_weight],
+        c=kwargs.get("c") if kwargs.get("c") else 60,
     )
 
