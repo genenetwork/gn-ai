@@ -1,6 +1,4 @@
 import os
-import json
-from itertools import groupby
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
@@ -9,7 +7,7 @@ from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
-from gnais.search import HybridSearch
+from gnais.search.ragent import hybrid_search
 from markupsafe import escape
 
 app = Quart(__name__)
@@ -37,64 +35,29 @@ torch.manual_seed(app.config["SEED"])
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(app.config["SEED"])
 
-llm = None
-if app.config["MODEL_TYPE"]:
-    llm = dspy.LM(
-        app.config["MODEL_NAME"],
-        api_key=app.config["API_KEY"],
-        max_tokens=10_000,
-        temperature=0,
-        verbose=False,
-    )
-else:
-    llm = dspy.LM(
-        model=f"openai/{app.config['MODEL_NAME']}",
-        api_base="http://localhost:7501/v1",
-        api_key="local",
-        model_type="chat",
-        max_tokens=10_000,
-        n_ctx=10_000,
-        seed=2_025,
-        temperature=0,
-        verbose=False,
-    )
+LLM_CONFIG = {
+    "model": app.config["MODEL_NAME"] if app.config.get("MODEL_NAME") else f"openai/{app.config['MODEL_NAME']}",
+    "api_key": app.config["API_KEY"] if app.config.get("MODEL_NAME") else "local",
+    "max_tokens": 10_000,
+    "temperature": 0,
+    "verbose": False
+}
 
-# KLUDGE: If you use a small local model, there is a very high
-# likelihood that JSON validation will fail.
-dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
-
-# KLUDGE: We create this here so that we don't have to keep
-# re-instantiating this class on every request.
-hybrid_search = HybridSearch()
-hybrid_stream_search = HybridSearch(stream=True)
+if not app.config("MODEL_TYPE"):
+    LLM_CONFIG["api_base"] = "http://localhost:7501/v1"
+    LLM_CONFIG["model_type"] = "chat"
+    LLM_CONFIG["n_ctx"] = 10_000
+    LLM_CONFIG["seed"] = 2_025
 
 
-def _parse_output(raw_output: str):
-    try:
-        return json.loads(raw_output)
-    except json.JSONDecodeError:
-        return {
-            "status": "error",
-            "error": "Invalid JSON response from model",
-            "raw_response": raw_output[:500],
-        }
+dspy.configure(lm=dspy.LM(**LLM_CONFIG))
 
-
-async def _run_search(query: str):
-    """Run the hybrid search and return a parsed dict."""
-    raw_output = await hybrid_search.handle(query)
-    return _parse_output(raw_output)
-
-
-def _group_results(results):
-    """Group search results by type (defaulting to 'Other')."""
-    sorted_results = sorted(results, key=lambda r: r.get("type") or "Other")
-    grouped = {}
-    for type_key, items in groupby(
-        sorted_results, key=lambda r: r.get("type") or "Other"
-    ):
-        grouped[type_key] = list(items)
-    return grouped
+async def _run_search(query: str) -> str:
+    """Run the hybrid search and return the final HTML string."""
+    async for event in hybrid_search(query):
+        if event["source"] == "hybrid" and event["kind"] == "final":
+            return event["content"]
+    return ""
 
 
 def _format_sse(event: str, data: str) -> str:
@@ -173,14 +136,13 @@ async def search_stream():
             _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
         )
         try:
-            async for raw_event in hybrid_stream_search.handle(query):
+            async for event in hybrid_search(query):
                 if final_sent:
                     break
 
-                event = json.loads(raw_event)
-                source = event.get("source")
-                kind = event.get("kind")
-                content = event.get("content", "")
+                source = event["source"]
+                kind = event["kind"]
+                content = event["content"]
 
                 if source in {"rag", "grag", "agent"} and kind == "chunk":
                     yield _format_sse(
@@ -209,13 +171,11 @@ async def search_stream():
                     if len(completed) == 3 and not final_sent:
                         yield _format_sse(
                             "search_state",
-                            _stream_status_markup("Complete", "complete"),
+                            _stream_status_markup("Synthesizing", "working"),
                         )
                         yield _format_sse(
                             "final_html",
-                            _stream_final_status_markup(
-                                "Synthesizing final answer…", "synthesizing"
-                            ),
+                            "<div class='synthesis-stream' sse-swap='synthesis_chunk' hx-swap='beforeend'></div>",
                         )
                     continue
 
@@ -228,27 +188,22 @@ async def search_stream():
                     if len(completed) == 3 and not final_sent:
                         yield _format_sse(
                             "search_state",
-                            _stream_status_markup("Complete", "complete"),
+                            _stream_status_markup("Synthesizing", "working"),
                         )
                         yield _format_sse(
                             "final_html",
-                            _stream_final_status_markup(
-                                "Synthesizing final answer…", "synthesizing"
-                            ),
+                            "<div class='synthesis-stream' sse-swap='synthesis_chunk' hx-swap='beforeend'></div>",
                         )
+                    continue
+
+                if source == "synthesis" and kind == "chunk":
+                    yield _format_sse("synthesis_chunk", content)
                     continue
 
                 if source == "hybrid" and kind == "final":
                     final_sent = True
-                    parsed_output = _parse_output(content)
-                    grouped = {}
-                    if parsed_output.get("results"):
-                        grouped = _group_results(parsed_output["results"])
-                    template = app.jinja_env.get_template("partials/response_body.html")
-                    final_html = await template.render_async(
-                        query=query, data=parsed_output, grouped=grouped
-                    )
-                    yield _format_sse("final_html", final_html)
+                    yield _format_sse("final_html", content)
+                    yield _format_sse("search_state", _stream_status_markup("Complete", "complete"))
                     yield _format_sse("stream_end", "<div></div>")
                     return
         except Exception as exc:
