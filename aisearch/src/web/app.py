@@ -31,6 +31,8 @@ cache = Cache(config={"CACHE_TYPE": "RedisCache"})
 cache.init_app(app)
 
 #  Bootstrapping our model
+#  NOTE: The backend serving localhost:7501 should also run on the GPU
+#  (e.g. vLLM with --device cuda) for maximum inference throughput.
 torch.manual_seed(app.config["SEED"])
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(app.config["SEED"])
