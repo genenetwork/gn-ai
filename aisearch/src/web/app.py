@@ -130,44 +130,6 @@ async def index():
     return await render_template("index.html")
 
 
-@app.route("/api/v1/search", methods=["GET"])
-@cache.cached(timeout=604800, make_cache_key=lambda: f"api:v1:{request.args.get('q')}")
-@limiter.limit("300 per day")
-async def search():
-    """JSON search endpoint - no authentication required."""
-    query = request.args.get("q")
-    if not query:
-        return jsonify({"error": "Missing query parameter 'q'"}), 400
-    if len(query) > 1000:
-        return jsonify({"error": "Query too long"}), 400
-
-    parsed_output = await _run_search(query)
-    if parsed_output.get("status") == "error" or "error" in parsed_output:
-        status_code = 500 if parsed_output.get("status") == "error" else 200
-        return jsonify(parsed_output), status_code
-    return jsonify(parsed_output)
-
-
-@app.route("/search", methods=["GET"])
-@cache.cached(timeout=604800, make_cache_key=lambda: f"html:v1:{request.args.get('q')}")
-@limiter.limit("300 per day")
-async def search_html():
-    """HTML fragment search endpoint for htmx."""
-    query = request.args.get("q")
-    if not query:
-        return "<div class='error-message'>Missing query parameter 'q'</div>", 400
-    if len(query) > 1000:
-        return "<div class='error-message'>Query too long</div>", 400
-
-    parsed_output = await _run_search(query)
-    grouped = {}
-    if parsed_output.get("results"):
-        grouped = _group_results(parsed_output["results"])
-    return await render_template(
-        "partials/response.html", query=query, data=parsed_output, grouped=grouped
-    )
-
-
 @app.route("/search/stream-shell", methods=["GET"])
 @limiter.limit("300 per day")
 async def search_stream_shell():
