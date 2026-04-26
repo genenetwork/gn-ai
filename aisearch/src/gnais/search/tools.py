@@ -1,3 +1,4 @@
+import asyncio
 from mem0 import Memory
 import datetime
 import functools
@@ -14,6 +15,15 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
     logging.getLogger(_mem0_logger).addFilter(
         lambda record: "Failed to add history" not in record.getMessage()
     )
+
+
+class SummarizeMemory(dspy.Signature):
+    """Summarize a system response for compact memory storage."""
+    full_response: str = dspy.InputField(desc="The full system response")
+    summary: str = dspy.OutputField(desc="Plain-text summary under 100 characters")
+
+
+_summarize_memory = dspy.Predict(SummarizeMemory)
 
 
 def with_memory(func):
@@ -50,8 +60,21 @@ def with_memory(func):
             yield chunk
         if memory_tools is not None and full_response:
             try:
+                pred = await asyncio.to_thread(
+                    _summarize_memory, full_response=full_response
+                )
+                summary = getattr(pred, "summary", "") or ""
+                if len(summary) > 200:
+                    summary = summary[:200]
+                if not summary.strip():
+                    summary = full_response
+            # KLUDGE: In case of anything, just store the darn full
+            # response.  Need to figure out a better way to do this.
+            except Exception:
+                summary = full_response
+            try:
                 memory_tools.store_memory(
-                    f"User query: {query}\nSystem response: {full_response}",
+                    f"User query: {query}\nSystem response: {summary}",
                     user_id=user_id,
                 )
             except Exception:

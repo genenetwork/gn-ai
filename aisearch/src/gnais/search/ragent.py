@@ -87,13 +87,13 @@ _RETRIEVER_SEM = create_ensemble_retriever(
 )
 
 
-async def _rag_search(query: str):
+async def _rag_search(query: str, user_id: str = "default_user"):
     retriever = (
         _RETRIEVER_KW
         if classify_search(query).get("decision") == "keyword"
         else _RETRIEVER_SEM
     )
-    async for item in rag_search(query, retriever=retriever):
+    async for item in rag_search(query, retriever=retriever, user_id=user_id):
         yield item
 
 
@@ -102,10 +102,10 @@ _agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
 
 
 async def _stream_component(
-    source: str, search_func: Any, query: str, queue: asyncio.Queue
+    source: str, search_func: Any, query: str, queue: asyncio.Queue, user_id: str
 ) -> None:
     try:
-        async for chunk in search_func(query):
+        async for chunk in search_func(query, user_id=user_id):
             if isinstance(chunk, dict) and "final" in chunk:
                 await queue.put(
                     StreamEvent(source=source, kind="final", content=chunk["final"])
@@ -120,7 +120,7 @@ async def _stream_component(
         await queue.put(StreamEvent(source=source, kind="done", content=""))
 
 
-async def hybrid_search(query: str):
+async def hybrid_search(query: str, user_id: str = "default_user"):
     """Run hybrid search with concurrent RAG, GraphRAG, and Agent.
 
     Yields :class:`StreamEvent` dicts for progress from each component,
@@ -128,9 +128,9 @@ async def hybrid_search(query: str):
     """
     queue: asyncio.Queue = asyncio.Queue()
     tasks = [
-        asyncio.create_task(_stream_component("rag", _rag_search, query, queue)),
-        asyncio.create_task(_stream_component("grag", _grag_search, query, queue)),
-        asyncio.create_task(_stream_component("agent", _agent_search, query, queue)),
+        asyncio.create_task(_stream_component("rag", _rag_search, query, queue, user_id)),
+        asyncio.create_task(_stream_component("grag", _grag_search, query, queue, user_id)),
+        asyncio.create_task(_stream_component("agent", _agent_search, query, queue, user_id)),
     ]
 
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
