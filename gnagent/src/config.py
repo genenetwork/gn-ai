@@ -61,6 +61,8 @@ torch.manual_seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
+#  NOTE: The backend serving localhost:7501 should run on the GPU
+#  (e.g. vLLM with --device cuda) for maximum inference throughput.
 if int(MODEL_TYPE) == 0:
     GENERATIVE_MODEL = dspy.LM(
         model=f"openai/{MODEL_NAME}",
