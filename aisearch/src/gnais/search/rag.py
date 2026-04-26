@@ -20,36 +20,12 @@ class RAG(dspy.Signature):
 
 
 
-_SYSTEM_PROMPT = """You excel at addressing search query using the context and chat history you have. You do not make mistakes.
-Extract answers to the query below from the context and chat history. Use the chat history before moving to the context.
-Provide links associated with each RDF entity. To build links you must replace RDF prefixes by namespaces.
-Here is the mapping of prefixes and namespaces:
-gn => http://rdf.genenetwork.org/v1/id
-gnc => http://rdf.genenetwork.org/v1/category
-owl => http://www.w3.org/2002/07/owl
-gnt => http://rdf.genenetwork.org/v1/term
-skos = http://www.w3.org/2004/02/skos/core
-xkos => http://rdf-vocabulary.ddialliance.org/xkos
-rdf => http://www.w3.org/1999/02/22-rdf-syntax-ns
-rdfs => http://www.w3.org/2000/01/rdf-schema
-taxon => http://purl.uniprot.org/taxonomy
-dcat => http://www.w3.org/ns/dcat
-dct => http://purl.org/dc/terms
-xsd => http://www.w3.org/2001/XMLSchema
-sdmx-measure => http://purl.org/linked-data/sdmx/2009/measure
-qb => http://purl.org/linked-data/cube
-pubmed => http://rdf.ncbi.nlm.nih.gov/pubmed
-v => http://www.w3.org/2006/vcard/ns
-foaf => http://xmlns.com/foaf/0.1
-geoSeries => http://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc
-
-All links pointing to specific traits should be translated to CD links using the trait id and the dataset name.
-Original trait link: https://rdf.genenetwork.org/v1/id/trait_16339
-Trait id: 16339
-Dataset name: BXDPublish
-New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish
-
-Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
+_SYSTEM_PROMPT = """Answer from the context and chat history. Use chat history first.
+Links: expand ALL turtle prefixes before using in <a href>.
+Examples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
+gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
+Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
+Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
 """
 
 
