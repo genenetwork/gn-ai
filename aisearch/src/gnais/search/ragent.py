@@ -1,20 +1,16 @@
 """Hybrid system of RAG and Agent for GeneNetwork's AI Search"""
 
 __all__ = (
-    "HybridSearch",
+    "hybrid_search",
     "Synthesis",
-    "synthesize",
-    "HybridState",
     "SearchResult",
+    "StreamEvent",
 )
 
 import asyncio
-import uuid
-import json
-from copy import deepcopy
-from dataclasses import dataclass, field
 from functools import partial
 from typing import Any
+from typing_extensions import TypedDict
 
 import dspy
 from gnais.search.agent import agent_search
@@ -22,10 +18,6 @@ from gnais.config import Config
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.corpus import get_docs, get_chroma_db
-from langchain_core.messages import BaseMessage, HumanMessage
-from langgraph.graph import END, START, StateGraph
-from langgraph.graph.message import add_messages
-from typing_extensions import Annotated, TypedDict
 
 
 class SearchResult(TypedDict):
@@ -38,212 +30,125 @@ class SearchResult(TypedDict):
     note: str
 
 
+class StreamEvent(TypedDict):
+    """SSE-ready event emitted by the hybrid search stream."""
+    source: str
+    kind: str
+    content: str
+
+
 class Synthesis(dspy.Signature):
     """Synthesize the final response from all search components.
 
-    Output must be a valid JSON object with this exact structure:
-    {
-      "query": "the original user query",
-      "status": "success" or "partial_success",
-      "summary": "overall summary of findings",
-      "results": [
-        {
-          "type": "gene" | "trait" | "dataset" | "phenotype" | "locus" | etc,
-          "name": "display name of the resource",
-          "description": "description of relevance to query",
-          "url": "URL to the resource page",
-          "extra": "optional additional context like evidence, IDs, etc."
-        }
-      ],
-      "note": "optional note about data limitations or errors"
-    }
+    Format your entire response as valid HTML. Use tags such as
+    <p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.
+    Do not wrap the response in markdown code blocks.
 
-    Guidelines for results:
-    - Use consistent "type" values: "gene", "trait", "dataset", "phenotype", "locus", etc.
-    - Always include URL when available
-    - Put specific IDs or evidence in "extra" field
-    - Group similar items together in the array
+    Structure the HTML as follows:
+    - A short status banner (<div class="status-success"> or "status-partial">).
+    - A summary paragraph (<p class="summary">).
+    - For each group of results, an <h3> heading with the type
+      (e.g. "Genes", "Traits", "Datasets") followed by a <ul class="card-list">.
+      Each item should be a <li class="card-item"> containing:
+        - <div class="card-title"><a href="URL">Name</a></div>
+        - <div class="card-description">Description</div> (optional)
+        - <div class="card-meta">Extra info</div> (optional)
+    - If no results were found, a <div class="note-box"> explaining why.
+    - Any additional notes in a <div class="note-box"> at the end.
+    - If there's need for a table, add a table with (<table class="data">)
     """
 
     original_query: str = dspy.InputField()
-    all_generation: list[BaseMessage] = dspy.InputField()
-    final_synthesis: SearchResult = dspy.OutputField(
-        desc="Final response from the system formatted as neat JSON dictionary with indent"
+    all_generation: list[str] = dspy.InputField()
+    feedback: str = dspy.OutputField(
+        desc="Final synthesized response formatted as valid HTML"
     )
 
 
-synthesize = dspy.Predict(Synthesis)
+_synthesize = dspy.streamify(
+    dspy.Predict(Synthesis),
+    stream_listeners=[
+        dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
+    ],
+    include_final_prediction_in_output_stream=True,
+)
+
+_rag_search = partial(
+    rag_search,
+    docs=get_docs(Config.CORPUS_PATH),
+    chroma_db=get_chroma_db(
+        chroma_db_path=Config.DB_PATH,
+        embed_model="Qwen/Qwen3-Embedding-0.6B",
+    ))
+_grag_search = partial(graph_rag_search, sparql_url=Config.SPARQL_ENDPOINT)
+_agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
 
 
-class HybridState(TypedDict):
-    messages: Annotated[list[BaseMessage], add_messages]
+async def _stream_component(
+    source: str, search_func: Any, query: str, queue: asyncio.Queue
+) -> None:
+    try:
+        async for chunk in search_func(query):
+            if isinstance(chunk, dict) and "final" in chunk:
+                await queue.put(
+                    StreamEvent(source=source, kind="final", content=chunk["final"])
+                )
+            else:
+                await queue.put(
+                    StreamEvent(source=source, kind="chunk", content=str(chunk))
+                )
+    except Exception as exc:
+        await queue.put(StreamEvent(source=source, kind="error", content=str(exc)))
+    finally:
+        await queue.put(StreamEvent(source=source, kind="done", content=""))
 
 
-@dataclass
-class HybridSearch:
-    stream: bool = False
-    rag_search: Any = field(init=False)
-    grag_search: Any = field(init=False)
-    agent_search: Any = field(init=False)
-    rag_stream_search: Any = field(init=False)
-    grag_stream_search: Any = field(init=False)
-    agent_stream_search: Any = field(init=False)
-    graph: Any = field(init=False)
+async def hybrid_search(query: str):
+    """Run hybrid search with concurrent RAG, GraphRAG, and Agent.
 
-    def __post_init__(self):
-        # Pre-load RAG corpus once and bind to rag_search
-        _rag_docs = get_docs(Config.CORPUS_PATH)
-        _rag_chroma_db = get_chroma_db(
-            chroma_db_path=Config.DB_PATH,
-            embed_model="Qwen/Qwen3-Embedding-0.6B",
-        )
-        _rag = partial(rag_search, docs=_rag_docs, chroma_db=_rag_chroma_db)
-        self.rag_search = _rag
-        self.rag_stream_search = _rag
+    Yields :class:`StreamEvent` dicts for progress from each component,
+    followed by a final synthesis event with ``source="hybrid"``.
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+    tasks = [
+        asyncio.create_task(_stream_component("rag", _rag_search, query, queue)),
+        asyncio.create_task(_stream_component("grag", _grag_search, query, queue)),
+        asyncio.create_task(_stream_component("agent", _agent_search, query, queue)),
+    ]
 
-        # Bind GRAG to endpoint
-        _grag = partial(graph_rag_search, sparql_url=Config.SPARQL_ENDPOINT)
-        self.grag_search = _grag
-        self.grag_stream_search = _grag
+    combined_outputs = {"rag": "", "grag": "", "agent": ""}
+    remaining = len(tasks)
 
-        _agent = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
-        self.agent_search = _agent
-        self.agent_stream_search = _agent
-        self.graph = self.initialize_graph()
+    while remaining:
+        event = await queue.get()
+        yield event
 
-    def _stream_event(self, source: str, kind: str, content: str = "") -> str:
-        return (
-            json.dumps(
-                {
-                    "source": source,
-                    "kind": kind,
-                    "content": content,
-                }
-            )
-            + "\n"
-        )
+        if event["kind"] == "final":
+            combined_outputs[event["source"]] = event["content"]
+        elif event["kind"] == "done":
+            remaining -= 1
 
-    async def _stream_component(
-        self, source: str, search: Any, query: str, queue: asyncio.Queue
-    ) -> None:
-        try:
-            gen = search.handle(query) if hasattr(search, "handle") else search(query)
-            async for chunk in gen:
-                if isinstance(chunk, dict) and "final" in chunk:
-                    await queue.put((source, "final", chunk["final"]))
-                else:
-                    await queue.put((source, "chunk", chunk))
-        except Exception as exc:
-            await queue.put((source, "error", str(exc)))
-        finally:
-            await queue.put((source, "done", ""))
+    await asyncio.gather(*tasks)
 
-    async def run_node(self, state: HybridState, search: Any) -> dict:
-        messages = deepcopy(state.get("messages"))
-        if len(messages) <= 2:  # only for first queries
-            query = messages[-1].content
+    messages = [
+        query,
+        combined_outputs["rag"],
+        combined_outputs["grag"],
+        combined_outputs["agent"],
+    ]
+
+    synthesis_text = ""
+    has_chunks = False
+    async for value in _synthesize(original_query=query, all_generation=messages):
+        if isinstance(value, dspy.Prediction):
+            synthesis_text = value.feedback
         else:
-            # provide access to memory for subsequent queries
-            query = str(messages)
-        if hasattr(search, "handle"):
-            response = await search.handle(query)
-        else:
-            gen = search(query)
-            response = ""
-            async for chunk in gen:
-                if isinstance(chunk, dict) and "final" in chunk:
-                    response = chunk["final"]
-        return response
+            chunk = getattr(value, "chunk", str(value))
+            synthesis_text += chunk
+            has_chunks = True
+            yield StreamEvent(source="synthesis", kind="chunk", content=chunk)
 
-    async def rag(self, state: HybridState) -> dict:
-        response = await self.run_node(state, self.rag_search)
-        return {"messages": [response]}
+    if not has_chunks and synthesis_text:
+        yield StreamEvent(source="synthesis", kind="chunk", content=synthesis_text)
 
-    async def grag(self, state: HybridState) -> dict:
-        response = await self.run_node(state, self.grag_search)
-        return {"messages": [response]}
-
-    async def agent(self, state: HybridState) -> dict:
-        response = await self.run_node(state, self.agent_search)
-        return {"messages": [response]}
-
-    def augment(self, state: HybridState) -> dict:
-        messages = deepcopy(state.get("messages"))
-        original_query = messages[
-            -3
-        ].content  # always take query that was used for the most recent run
-        response = synthesize(original_query=original_query, all_generation=messages)
-        return {"messages": [json.dumps(response.get("final_synthesis"))]}
-
-    def initialize_graph(self) -> Any:
-        graph_builder = StateGraph(HybridState)
-        graph_builder.add_node("rag", self.rag)
-        graph_builder.add_node("grag", self.grag)
-        graph_builder.add_node("agent", self.agent)
-        graph_builder.add_node("augment", self.augment)
-        graph_builder.add_edge(START, "rag")
-        graph_builder.add_edge(START, "grag")
-        graph_builder.add_edge(START, "agent")
-        graph_builder.add_edge("rag", "augment")
-        graph_builder.add_edge("grag", "augment")
-        graph_builder.add_edge("agent", "augment")
-        graph_builder.add_edge("augment", END)
-        graph = graph_builder.compile()
-        return graph
-
-    async def invoke_graph(self, query: str) -> Any:
-        config = {"configurable": {"thread_id": uuid.uuid4().hex[:8]}}
-        result = await self.graph.ainvoke(
-            {"messages": [HumanMessage(content=query)]}, config
-        )
-        return result
-
-    async def _handle(self, query: str) -> str:
-        result = await self.invoke_graph(query)
-        result = result.get("messages")[-1].content
-        return result
-
-    async def _handle_stream(self, query: str):
-        searches = {
-            "rag": self.rag_stream_search,
-            "grag": self.grag_stream_search,
-            "agent": self.agent_stream_search,
-        }
-        queue: asyncio.Queue = asyncio.Queue()
-        tasks = [
-            asyncio.create_task(self._stream_component(source, search, query, queue))
-            for source, search in searches.items()
-        ]
-        combined_outputs = {source: "" for source in searches}
-        remaining = len(tasks)
-
-        while remaining:
-            source, kind, content = await queue.get()
-            if kind == "chunk":
-                combined_outputs[source] += content
-                yield self._stream_event(source, kind, content)
-            elif kind == "final":
-                combined_outputs[source] = content
-                yield self._stream_event(source, kind, content)
-            elif kind == "error":
-                yield self._stream_event(source, kind, content)
-            elif kind == "done":
-                remaining -= 1
-                yield self._stream_event(source, kind)
-
-        await asyncio.gather(*tasks)
-
-        messages = [
-            HumanMessage(content=query),
-            HumanMessage(content=combined_outputs["rag"]),
-            HumanMessage(content=combined_outputs["grag"]),
-            HumanMessage(content=combined_outputs["agent"]),
-        ]
-        final = synthesize(original_query=query, all_generation=messages)
-        final = json.dumps(final.get("final_synthesis"))
-        yield self._stream_event("hybrid", "final", final)
-
-    def handle(self, query: str) -> Any:
-        if self.stream:
-            return self._handle_stream(query)
-        return self._handle(query)
+    yield StreamEvent(source="hybrid", kind="final", content=synthesis_text)
