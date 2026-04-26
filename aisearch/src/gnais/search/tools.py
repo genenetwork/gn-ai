@@ -166,6 +166,9 @@ RULES
 """
 
 
+_ONTOLOGY_HINTS = _SPARQL_PREFIXES + "\n" + _QUERY_HINTS
+
+
 class QueryTranslation(dspy.Signature):
     """Translate natural language to SPARQL SELECT. CRITICAL: every query MUST start with the PREFIX declarations. Only use declared prefixes. Use ontology hints and example patterns."""
 
@@ -190,6 +193,7 @@ def sparql_fetch(query: str, sparql_uri: str) -> Any:
     return sparql.queryAndConvert()
 
 
+@functools.lru_cache(maxsize=4)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query_str: str) -> Any:
         return sparql_fetch(query_str, sparql_uri)

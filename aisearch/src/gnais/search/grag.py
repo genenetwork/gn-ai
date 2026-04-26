@@ -3,7 +3,7 @@
 import sys
 import dspy
 from gnais.search.classification import extract_keywords
-from gnais.search.tools import with_memory, _QUERY_HINTS, _SPARQL_PREFIXES
+from gnais.search.tools import with_memory, _ONTOLOGY_HINTS
 from SPARQLWrapper import JSON, SPARQLWrapper
 
 _SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
@@ -60,6 +60,16 @@ class GraphRAG(dspy.Signature):
     )
 
 
+_SPARQL_GEN = dspy.Predict(SPARQLGenerator)
+
+_GRAG_STREAM = dspy.streamify(
+    dspy.Predict(GraphRAG),
+    stream_listeners=[
+        dspy.streaming.StreamListener(signature_field_name="feedback")
+    ],
+    include_final_prediction_in_output_stream=True,
+)
+
 
 async def graph_rag_search(
     query: str,
@@ -73,9 +83,9 @@ async def graph_rag_search(
 
     prompt = f"{_SYSTEM_PROMPT}\n{keywords}"
 
-    sparql_gen = dspy.Predict(SPARQLGenerator)(
+    sparql_gen = _SPARQL_GEN(
         original_query=prompt,
-        classes_info=_SPARQL_PREFIXES + "\n" + _QUERY_HINTS,
+        classes_info=_ONTOLOGY_HINTS,
         properties_info="See ontology hints above.",
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
@@ -84,15 +94,7 @@ async def graph_rag_search(
 
     sparql_results = _run_sparql_queries(sparql_url, sparql_queries)
 
-    predict = dspy.streamify(
-        dspy.Predict(GraphRAG),
-        stream_listeners=[
-            dspy.streaming.StreamListener(signature_field_name="feedback")
-        ],
-        include_final_prediction_in_output_stream=True,
-    )
-
-    async for value in predict(
+    async for value in _GRAG_STREAM(
         original_query=prompt,
         sparql_results=sparql_results,
         chat_history=chat_history,
