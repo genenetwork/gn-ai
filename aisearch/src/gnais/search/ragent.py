@@ -17,7 +17,7 @@ from functools import partial
 from typing import Any
 
 import dspy
-from gnais.search.agent import Digest as AgentSearch
+from gnais.search.agent import agent_search
 from gnais.config import Config
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
@@ -106,8 +106,9 @@ class HybridSearch:
         self.grag_search = _grag
         self.grag_stream_search = _grag
 
-        self.agent_search = AgentSearch(stream=False)
-        self.agent_stream_search = AgentSearch(stream=True)
+        _agent = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
+        self.agent_search = _agent
+        self.agent_stream_search = _agent
         self.graph = self.initialize_graph()
 
     def _stream_event(self, source: str, kind: str, content: str = "") -> str:

@@ -5,6 +5,10 @@ import logging
 import os
 from typing import Any
 
+import dspy
+from gnais.utils import fetch_schema
+from SPARQLWrapper import JSON, SPARQLWrapper
+
 # mem0's internal history store can spew sqlite transaction warnings;
 # suppress them so they don't clutter CLI output.
 for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
@@ -114,3 +118,46 @@ class MemoryTools:
             return "Memory deleted successfully."
         except Exception as e:
             return f"Error deleting memory: {str(e)}"
+
+
+class QueryTranslation(dspy.Signature):
+    original_query: str = dspy.InputField()
+    rdf_classes: str = dspy.InputField()
+    rdf_properties: str = dspy.InputField()
+    translated_query: str = dspy.OutputField(
+        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema inferred from RDF schema"
+    )
+
+
+
+_translate_query = dspy.Predict(QueryTranslation)
+
+
+def sparql_fetch(query: str, sparql_uri: str) -> Any:
+    rdf_classes, rdf_properties = fetch_schema(sparql_uri)
+    sparql_query = _translate_query(
+        original_query=query,
+        rdf_classes=rdf_classes,
+        rdf_properties=rdf_properties,
+    ).get("translated_query")
+    sparql = SPARQLWrapper(sparql_uri)
+    sparql.setReturnFormat(JSON)
+    sparql.setQuery(sparql_query)
+    return sparql.queryAndConvert()
+
+
+def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
+    def _fetch(query_str: str) -> Any:
+        return sparql_fetch(query_str, sparql_uri)
+
+    return dspy.Tool(
+        name="fetch_data",
+        desc="Fetch RDF data around GeneNetwork data through SPARQL",
+        args={
+            "query": {
+                "type": "string",
+                "desc": "SPARQL query to run to fetch relevant data",
+            },
+        },
+        func=_fetch,
+    )
