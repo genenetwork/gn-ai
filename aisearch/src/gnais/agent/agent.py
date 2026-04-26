@@ -131,7 +131,8 @@ class Digest:
     def _build_query(self, query: str) -> str:
         system_prompt = """
             You excel at addressing search query using the information you have. You do not make mistakes.
-            Extract answers to the query from the context and provide links associated with each RDF entity.
+            Extract answers to the query from the context.
+            Provide links associated with each trait. Trait usually have an object corresponding to the actual link with the gnt:has_trait_page predicate.
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return f"{system_prompt}\n{query}"
