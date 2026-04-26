@@ -110,11 +110,24 @@ if __name__ == "__main__":
     )
     memory = Memory(config=memory_config)
 
+    _DOCS = get_docs(CORPUS_PATH)
+    _CHROMA_DB = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
+    _RETRIEVER_KW = create_ensemble_retriever(
+        chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.7
+    )
+    _RETRIEVER_SEM = create_ensemble_retriever(
+        chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.5
+    )
+
     async def _consume():
+        retriever = (
+            _RETRIEVER_KW
+            if classify_search(args.query).get("decision") == "keyword"
+            else _RETRIEVER_SEM
+        )
         async for chunk in rag_search(
                 query=args.query,
-                chroma_db=get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B"),
-                docs=get_docs(CORPUS_PATH),
+                retriever=retriever,
                 memory=memory,
         ):
             print(chunk, end="", flush=True)
