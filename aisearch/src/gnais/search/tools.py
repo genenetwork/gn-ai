@@ -1,6 +1,5 @@
 import asyncio
 from mem0 import Memory
-import datetime
 import functools
 import logging
 import os
@@ -18,37 +17,42 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
 
 
 class SummarizeMemory(dspy.Signature):
-    """Summarize a system response for compact memory storage."""
-    full_response: str = dspy.InputField(desc="The full system response")
-    summary: str = dspy.OutputField(desc="Plain-text summary under 100 characters")
+    """Extract and condense all key information from the system
+       response into an AI memory-ready summary.  Always produce a
+       summary that preserves the essential facts, events, or
+       user-related details such as the original query/context.  The
+       final summary must be under 512 characters.
 
+    """
+    full_response: str = dspy.InputField(desc="The full system response that contains information to remember")
+    summary: str = dspy.OutputField(desc="Plain-text memory summary under 512 characters")
 
 _summarize_memory = dspy.Predict(SummarizeMemory)
 
 
 def with_memory(func):
     """Decorator that injects chat_history from mem0 and persists the interaction after streaming."""
-
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
-        query = kwargs.get("query", "")
+        query = kwargs.get("query")
         memory = kwargs.get("memory")
-        user_id = kwargs.get("user_id", "default_user")
-
+        memory_type = kwargs.get("memory_type")
+        user_id = kwargs.get("user_id")
         # Pre: search memories and build chat_history
         chat_history = []
         memory_tools = None
         if memory is not None:
             memory_tools = MemoryTools(memory)
-            try:
-                memories = memory_tools.search_memories(query, user_id=user_id)
-                if memories and not any(
-                    marker in memories
-                    for marker in ("No relevant memories found", "Error searching memories")
-                ):
-                    chat_history = [memories]
-            except Exception:
-                pass
+            memories = memory_tools.search_memories(
+                query,
+                user_id=user_id,
+                run_id=memory_type
+            )
+            if memories and not any(
+                marker in memories
+                for marker in ("No relevant memories found", "Error searching memories")
+            ):
+                chat_history = [memories]
 
         kwargs["chat_history"] = chat_history
 
@@ -59,27 +63,15 @@ def with_memory(func):
                 full_response = chunk["final"]
             yield chunk
         if memory_tools is not None and full_response:
-            try:
-                pred = await asyncio.to_thread(
-                    _summarize_memory, full_response=full_response
-                )
-                summary = getattr(pred, "summary", "") or ""
-                if len(summary) > 200:
-                    summary = summary[:200]
-                if not summary.strip():
-                    summary = full_response
-            # KLUDGE: In case of anything, just store the darn full
-            # response.  Need to figure out a better way to do this.
-            except Exception:
-                summary = full_response
-            try:
-                memory_tools.store_memory(
-                    f"User query: {query}\nSystem response: {summary}",
-                    user_id=user_id,
-                )
-            except Exception:
-                pass
-
+            pred = await asyncio.to_thread(
+                _summarize_memory, full_response=full_response
+            )
+            summary = getattr(pred, "summary", "") or ""
+            memory_tools.store_memory(
+                f"Query: {query}\n Summary: {summary}",
+                user_id=user_id,
+                run_id=memory_type
+            )
     return wrapper
 
 
@@ -89,33 +81,29 @@ class MemoryTools:
     def __init__(self, memory: Memory):
         self.memory = memory
 
-    def store_memory(self, content: str, user_id: str = "default_user") -> str:
+    def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
         """Store information in memory."""
         try:
-            self.memory.add(content, user_id=user_id)
+            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=False)
             return f"Stored memory: {content}"
         except Exception as e:
             return f"Error storing memory: {str(e)}"
 
-    def search_memories(self, query: str, user_id: str = "default_user", limit: int = 5) -> str:
+    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 20) -> str:
         """Search for relevant memories."""
-        try:
-            results = self.memory.search(query, filters={"user_id": user_id}, limit=limit)
-            if not results:
-                return "No relevant memories found."
-
+        results = self.memory.search(query, user_id=user_id, run_id=run_id, limit=limit)
+        if results and results.get("results"):
             memory_text = "Relevant memories found:\n"
             for i, result in enumerate(results["results"]):
                 memory_text += f"{i}. {result['memory']}\n"
             return memory_text
-        except Exception as e:
-            return f"Error searching memories: {str(e)}"
+        return "No relevant memories found."
 
-    def get_all_memories(self, user_id: str = "default_user") -> str:
+    def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
         """Get all memories for a user."""
         try:
-            results = self.memory.get_all(filters={"user_id": user_id})
-            if not results:
+            results = self.memory.get_all(user_id=user_id, run_id=run_id, filters=filters)
+            if not results or not results.get("results"):
                 return "No memories found for this user."
 
             memory_text = "All memories for user:\n"
@@ -193,7 +181,9 @@ _ONTOLOGY_HINTS = _SPARQL_PREFIXES + "\n" + _QUERY_HINTS
 
 
 class QueryTranslation(dspy.Signature):
-    """Translate natural language to SPARQL SELECT. CRITICAL: every query MUST start with the PREFIX declarations. Only use declared prefixes. Use ontology hints and example patterns."""
+    """Translate natural language to SPARQL SELECT. CRITICAL: every
+    query MUST start with the PREFIX declarations. Only use declared
+    prefixes. Use ontology hints and example patterns."""
 
     original_query: str = dspy.InputField(desc="User query")
     ontology_hints: str = dspy.InputField(desc="GeneNetwork ontology and example query patterns")
