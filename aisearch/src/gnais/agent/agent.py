@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -35,26 +36,36 @@ class QueryTranslation(dspy.Signature):
     rdf_examples: list = dspy.InputField(
         desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
     )
-    translated_query: str = dspy.OutputField(
-        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema"
+    translated_queries: list[str] = dspy.OutputField(
+        desc="""Top 10 SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using terms similar to the ones in RDF examples.
+        Queries should have an optional condition to identify object of the predicate gnt:has_trait_page."""
     )
 
 
 translate_query = dspy.Predict(QueryTranslation)
 
 
-def fetch_data(query: str) -> Any:
+def fetch_data(query: str) -> list:
     rdf_classes, rdf_properties, rdf_examples = fetch_schema(SPARQL_ENDPOINT)
-    sparql_query = translate_query(
+    sparql_queries = translate_query(
         original_query=query,
         rdf_classes=rdf_classes,
         rdf_properties=rdf_properties,
         rdf_examples=rdf_examples,
-    ).get("translated_query")
+    ).get("translated_queries")
     sparql = SPARQLWrapper(SPARQL_ENDPOINT)
     sparql.setReturnFormat(JSON)
-    sparql.setQuery(sparql_query)
-    return sparql.queryAndConvert()
+    final_results = []
+    for sparql_query in sparql_queries:
+        try:
+            sparql.setQuery(sparql_query)
+            results = sparql.queryAndConvert()
+            results = str(results["results"]["bindings"])
+            final_results.append(results)
+            time.sleep(5)
+        except:
+            continue
+    return final_results
 
 
 fetch_data = dspy.Tool(
@@ -72,13 +83,13 @@ fetch_data = dspy.Tool(
 
 class ReactSig(dspy.Signature):
     query: str = dspy.InputField()
-    solution: ListInformation = dspy.OutputField(desc="The answer to the query")
+    solution: ListInformation = dspy.OutputField(desc="The answer to the query with links")
 
 
 class StreamReactSig(dspy.Signature):
     query: str = dspy.InputField()
     solution: str = dspy.OutputField(
-        desc="The answer to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
+        desc="The answer to the query with detailed answers, links and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
     )
 
 
@@ -132,7 +143,7 @@ class Digest:
         system_prompt = """
             You excel at addressing search query using the information you have. You do not make mistakes.
             Extract answers to the query from the context.
-            Provide links associated with each trait. Trait usually have an object corresponding to the actual link with the gnt:has_trait_page predicate.
+            Provide links to each trait page. You can find the link of a specific trait by querying SPARQL for object with the predicate gnt:has_trait_page and the trait as subject.
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return f"{system_prompt}\n{query}"
