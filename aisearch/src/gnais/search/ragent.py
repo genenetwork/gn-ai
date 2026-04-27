@@ -8,7 +8,7 @@ __all__ = (
 )
 
 import asyncio
-from functools import partial
+from functools import lru_cache, partial
 from typing import Any
 from typing_extensions import TypedDict
 
@@ -74,24 +74,32 @@ _synthesize = dspy.streamify(
     include_final_prediction_in_output_stream=True,
 )
 
-_RAG_CHROMA_DB = get_chroma_db(
-    chroma_db_path=Config.DB_PATH,
-    embed_model="Qwen/Qwen3-Embedding-0.6B",
-)
-_RAG_DOCS = get_docs(Config.CORPUS_PATH)
-_RETRIEVER_KW = create_ensemble_retriever(
-    chroma_db=_RAG_CHROMA_DB, docs=_RAG_DOCS, keyword_weight=0.7
-)
-_RETRIEVER_SEM = create_ensemble_retriever(
-    chroma_db=_RAG_CHROMA_DB, docs=_RAG_DOCS, keyword_weight=0.5
-)
+@lru_cache(maxsize=8)
+def _get_retrievers():
+    """Build (and cache) the RAG ensemble retrievers.  This is expensive
+    because it tokenizes the entire corpus for BM25, so we only do it
+    when hybrid_search is actually invoked."""
+    chroma_db = get_chroma_db(
+        chroma_db_path=Config.DB_PATH,
+        embed_model="Qwen/Qwen3-Embedding-0.6B",
+    )
+    docs = get_docs(Config.CORPUS_PATH)
+    return {
+        "kw": create_ensemble_retriever(
+            chroma_db=chroma_db, docs=docs, keyword_weight=0.7
+        ),
+        "sem": create_ensemble_retriever(
+            chroma_db=chroma_db, docs=docs, keyword_weight=0.5
+        ),
+    }
 
 
 async def _rag_search(query: str, user_id: str = "default_user"):
+    retrievers = _get_retrievers()
     retriever = (
-        _RETRIEVER_KW
+        retrievers["kw"]
         if classify_search(query).get("decision") == "keyword"
-        else _RETRIEVER_SEM
+        else retrievers["sem"]
     )
     async for item in rag_search(query, retriever=retriever, user_id=user_id):
         yield item
