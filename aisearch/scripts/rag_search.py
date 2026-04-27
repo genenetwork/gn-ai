@@ -7,6 +7,7 @@ import warnings
 
 import dspy
 import torch
+from typing import Any
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
 from gnais.search.rag import rag_search
@@ -19,6 +20,9 @@ warnings.filterwarnings("ignore")
 CORPUS_PATH = os.getenv("CORPUS_PATH")
 if CORPUS_PATH is None:
     raise FileNotFoundError("CORPUS_PATH must be specified to find corpus")
+MEMORY_PATH = os.getenv("DB_PATH")
+if MEMORY_PATH is None:
+    raise FileNotFoundError("DB_PATH must be specified to access database")
 DB_PATH = os.getenv("DB_PATH")
 if DB_PATH is None:
     raise FileNotFoundError("DB_PATH must be specified to access database")
@@ -69,69 +73,72 @@ else:
 dspy.configure(lm=llm)
 
 
+def digest(query: str, memory: Any, user_id: str = "default_user") -> str:
+    """Run the full RAG pipeline for a single query and return the answer.
+
+    This is a convenience wrapper around the same logic used by the CLI
+    script, packaged as a plain synchronous function.
+    """
+
+    async def _run() -> str:
+
+        docs = get_docs(CORPUS_PATH)
+        chroma_db = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
+        decision = classify_search(query).get("decision")
+        retriever = create_ensemble_retriever(
+            chroma_db=chroma_db,
+            docs=docs,
+            keyword_weight=0.7 if decision == "keyword" else 0.5,
+        )
+
+        parts = []
+        async for chunk in rag_search(
+            query=query,
+            retriever=retriever,
+            memory=memory,
+            user_id=user_id,
+            chat_history=[],
+            memory_type="rag",
+        ):
+            parts.append(str(chunk))
+        return "".join(parts)
+
+    return asyncio.run(_run())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("query", help="Search query")
-    parser.add_argument(
-        "--stream",
-        action="store_true",
-        help="Stream the response incrementally",
-    )
+    parser.add_argument("--user-id", default="test-user", help="Mem0 user identity")
     args = parser.parse_args()
-
     memory_config = MemoryConfig(
         llm={
             "provider": "litellm",
             "config": {
                 "model": "moonshot/kimi-k2-0711-preview",
-                "temperature": 0.1,
+                "temperature": 0.5,
                 "max_tokens": 2_000,
+                "api_key": API_KEY,
             },
         },
         embedder={
             "provider": "huggingface",
             "config": {
                 "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
             },
         },
         vector_store={
             "provider": "chroma",
             "config": {
                 "collection_name": "mem0",
-                "path": os.path.join(DB_PATH, "rag_mem0_chroma"),
-            },
-        },
-        history_store={
-            "provider": "sqlite",
-            "config": {
-                "path": os.path.join(DB_PATH, "rag_mem0_history.db"),
+                "path": os.path.join(MEMORY_PATH, "rag_mem0_chroma"),
             },
         },
     )
     memory = Memory(config=memory_config)
-
-    _DOCS = get_docs(CORPUS_PATH)
-    _CHROMA_DB = get_chroma_db(chroma_db_path=DB_PATH, embed_model="Qwen/Qwen3-Embedding-0.6B")
-    _RETRIEVER_KW = create_ensemble_retriever(
-        chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.7
-    )
-    _RETRIEVER_SEM = create_ensemble_retriever(
-        chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.5
-    )
-
-    async def _consume():
-        retriever = (
-            _RETRIEVER_KW
-            if classify_search(args.query).get("decision") == "keyword"
-            else _RETRIEVER_SEM
-        )
-        async for chunk in rag_search(
-                query=args.query,
-                retriever=retriever,
-                memory=memory,
-        ):
-            print(chunk, end="", flush=True)
-        print()
-        print("Done")
-
-    asyncio.run(_consume())
+    print(digest(args.query, user_id=args.user_id, memory=memory))
