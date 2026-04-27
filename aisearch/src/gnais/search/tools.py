@@ -75,6 +75,8 @@ def with_memory(func):
     return wrapper
 
 
+# KLUDGE: For now this is lifted from:
+# <https://dspy.ai/tutorials/mem0_react_agent/>
 class MemoryTools:
     """Tools for interacting with the Mem0 memory system."""
 
@@ -84,6 +86,7 @@ class MemoryTools:
     def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
         """Store information in memory."""
         try:
+            # KLUDGE: Set `infer=False` so that we store everything.
             self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=False)
             return f"Stored memory: {content}"
         except Exception as e:
