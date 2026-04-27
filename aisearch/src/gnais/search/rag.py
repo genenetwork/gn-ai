@@ -38,13 +38,12 @@ Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
 """
 
 
-@with_memory
+@with_memory(memory_type="rag")
 async def rag_search(
     query: str,
     retriever: Any,
     user_id: str = "default_user",
     memory: Any = None,
-    memory_type: str = "rag",
     chat_history: list = [],
 ):
     prompt = f"{_SYSTEM_PROMPT}\nQuery: {query}"

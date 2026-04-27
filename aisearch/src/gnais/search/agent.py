@@ -1,11 +1,9 @@
 """Agent with SPARQL tool calling for AI search in GeneNetwork"""
 
-import os
-from functools import lru_cache
 from typing import Any
 
 import dspy
-from gnais.search.tools import make_sparql_fetch_tool
+from gnais.search.tools import make_sparql_fetch_tool, MemoryTools
 
 
 _SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
@@ -24,13 +22,31 @@ class AgentSig(dspy.Signature):
     )
 
 
-@lru_cache(maxsize=2048)
-def _get_stream_react(sparql_url: str):
-    """Build (and cache) the streaming ReAct agent for a given SPARQL endpoint."""
+def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "default_user"):
+    """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
+    tools = [make_sparql_fetch_tool(sparql_url)]
+
+    if memory is not None:
+        mt = MemoryTools(memory)
+
+        def store_memory(content: str) -> str:
+            """Store information in memory for future recall."""
+            return mt.store_memory(content, user_id=user_id, run_id="agent")
+
+        def search_memories(query: str, limit: int = 20) -> str:
+            """Search for relevant memories using a query string."""
+            return mt.search_memories(query, user_id=user_id, run_id="agent", limit=limit)
+
+        def get_all_memories() -> str:
+            """Retrieve all stored memories for the current user."""
+            return mt.get_all_memories(user_id=user_id, run_id="agent")
+
+        tools.extend([store_memory, search_memories, get_all_memories])
+
     return dspy.streamify(
         dspy.ReAct(
             signature=AgentSig,
-            tools=[make_sparql_fetch_tool(sparql_url)],
+            tools=tools,
             max_iters=20,
         ),
         stream_listeners=[
@@ -44,12 +60,12 @@ def _get_stream_react(sparql_url: str):
     )
 
 
-async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM_PROMPT, user_id: str = "default_user"):
-    """Run agent-based search with SPARQL tool calling.
+async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
+    """Run agent-based search with SPARQL tool calling and optional memory.
 
     Yields stream chunks and a final prediction dict.
     """
-    stream_react = _get_stream_react(sparql_url)
+    stream_react = _build_stream_react(sparql_url, memory=memory, user_id=user_id)
 
     async for value in stream_react(
             query=f"{_SYSTEM_PROMPT}\n{query}",

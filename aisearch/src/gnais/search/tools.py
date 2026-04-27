@@ -17,62 +17,73 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
 
 
 class SummarizeMemory(dspy.Signature):
-    """Extract and condense all key information from the system
-       response into an AI memory-ready summary.  Always produce a
-       summary that preserves the essential facts, events, or
-       user-related details such as the original query/context.  The
-       final summary must be under 512 characters.
+    """Convert the system response into a concise, storable memory fact.
 
+    RULES:
+    1. ALWAYS output a non-empty summary (minimum 10 characters).
+    2. Prefer user-specific information (preferences, plans, facts about the user).
+    3. If no user-specific info exists, output a factual one‑sentence summary of the response.
+    4. Keep the summary under 300 characters. If longer, truncate or prioritise the most important part.
+
+    Examples:
+      full_response: "The capital of France is Paris. It is known for the Eiffel Tower."
+      summary: "Learned that Paris is the capital of France."
+
+      full_response: "I see you're interested in Haskell. It's a purely functional programming language."
+      summary: "User is interested in Haskell."
+
+      full_response: "No relevant memories found for your query."
+      summary: "No prior memories found for this query."
     """
-    full_response: str = dspy.InputField(desc="The full system response that contains information to remember")
-    summary: str = dspy.OutputField(desc="Plain-text memory summary under 512 characters")
+    full_response: str = dspy.InputField()
+    summary: str = dspy.OutputField(desc="Plain-text memory fact, ≤300 characters long.  NEVER empty.")
 
 _summarize_memory = dspy.Predict(SummarizeMemory)
 
 
-def with_memory(func):
-    """Decorator that injects chat_history from mem0 and persists the interaction after streaming."""
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        query = kwargs.get("query")
-        memory = kwargs.get("memory")
-        memory_type = kwargs.get("memory_type")
-        user_id = kwargs.get("user_id")
-        # Pre: search memories and build chat_history
-        chat_history = []
-        memory_tools = None
-        if memory is not None:
-            memory_tools = MemoryTools(memory)
-            memories = memory_tools.search_memories(
-                query,
-                user_id=user_id,
-                run_id=memory_type
-            )
-            if memories and not any(
-                marker in memories
-                for marker in ("No relevant memories found", "Error searching memories")
-            ):
-                chat_history = [memories]
+def with_memory(memory_type: str = "interaction"):
+    """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            query = kwargs.get("query")
+            memory = kwargs.get("memory")
+            user_id = kwargs.get("user_id")
 
-        kwargs["chat_history"] = chat_history
+            # Pre: search memories and build chat_history
+            chat_history = []
+            memory_tools = None
+            if memory is not None:
+                memory_tools = MemoryTools(memory)
+                memories = memory_tools.search_memories(
+                    query,
+                    user_id=user_id,
+                    run_id=memory_type
+                )
+                if memories:
+                    chat_history = [memories]
 
-        # Run the original async generator and collect the full response
-        full_response = ""
-        async for chunk in func(*args, **kwargs):
-            if isinstance(chunk, dict) and "final" in chunk:
-                full_response = chunk["final"]
-            yield chunk
-        if memory_tools is not None and full_response:
-            pred = await asyncio.to_thread(
-                _summarize_memory, full_response=full_response
-            )
-            summary = getattr(pred, "summary", "") or ""
-            memory_tools.store_memory(
-                f"Query: {query}\n Summary: {summary}",
-                user_id=user_id,
-                run_id=memory_type
-            )
-    return wrapper
+            kwargs["chat_history"] = chat_history
+
+            # Run the original async generator and collect the full response
+            full_response = ""
+            async for chunk in func(*args, **kwargs):
+                if isinstance(chunk, dict) and "final" in chunk:
+                    full_response = chunk["final"]
+                yield chunk
+            if memory_tools is not None and full_response:
+                pred = await asyncio.to_thread(
+                    _summarize_memory, full_response=full_response
+                )
+                summary = getattr(pred, "summary", "").strip()
+                if len(summary) > 10:   # Avoid storing trivial summaries
+                    memory_tools.store_memory(
+                        summary,
+                        user_id=user_id,
+                        run_id=memory_type
+                    )
+        return wrapper
+    return decorator
 
 
 # KLUDGE: For now this is lifted from:
@@ -86,8 +97,7 @@ class MemoryTools:
     def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
         """Store information in memory."""
         try:
-            # KLUDGE: Set `infer=False` so that we store everything.
-            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=False)
+            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata)
             return f"Stored memory: {content}"
         except Exception as e:
             return f"Error storing memory: {str(e)}"
@@ -96,11 +106,8 @@ class MemoryTools:
         """Search for relevant memories."""
         results = self.memory.search(query, user_id=user_id, run_id=run_id, limit=limit)
         if results and results.get("results"):
-            memory_text = "Relevant memories found:\n"
-            for i, result in enumerate(results["results"]):
-                memory_text += f"{i}. {result['memory']}\n"
-            return memory_text
-        return "No relevant memories found."
+            return "\n".join([r["memory"] for r in results["results"]])
+        return ""
 
     def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
         """Get all memories for a user."""
