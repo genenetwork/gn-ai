@@ -71,6 +71,7 @@ _GRAG_STREAM = dspy.streamify(
 )
 
 
+@with_memory(memory_type="grag")
 async def graph_rag_search(
     query: str,
     sparql_url: str,
