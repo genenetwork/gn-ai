@@ -3,14 +3,13 @@
 import asyncio
 import json
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import dspy
-from gnais.rag.config import ListInformation, reformat
-from gnais.utils import fetch_schema
 from langchain_community.graphs import RdfGraph
 from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
@@ -18,6 +17,8 @@ from langgraph.graph.message import add_messages
 from SPARQLWrapper import JSON, SPARQLWrapper
 from typing_extensions import Annotated, TypedDict
 
+from gnais.rag.config import ListInformation, reformat
+from gnais.utils import fetch_schema
 
 SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
 if SPARQL_ENDPOINT is None:
@@ -28,27 +29,43 @@ if SPARQL_ENDPOINT is None:
 
 class QueryTranslation(dspy.Signature):
     original_query: str = dspy.InputField()
-    rdf_classes: str = dspy.InputField()
-    rdf_properties: str = dspy.InputField()
-    translated_query: str = dspy.OutputField(
-        desc="SPARQL query corresponding to user query for fetching requested data given RDF schema inferred from RDF schema"
+    rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
+    rdf_properties: list = dspy.InputField(
+        desc="RDF properties extracted from the graph"
+    )
+    rdf_examples: list = dspy.InputField(
+        desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
+    )
+    translated_queries: list[str] = dspy.OutputField(
+        desc="""Top 10 SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using terms similar to the ones in RDF examples.
+        Queries should have an optional condition to identify object of the predicate gnt:has_trait_page."""
     )
 
 
 translate_query = dspy.Predict(QueryTranslation)
 
 
-def fetch_data(query: str) -> Any:
-    rdf_classes, rdf_properties = fetch_schema(SPARQL_ENDPOINT)
-    sparql_query = translate_query(
+def fetch_data(query: str) -> list:
+    rdf_classes, rdf_properties, rdf_examples = fetch_schema(SPARQL_ENDPOINT)
+    sparql_queries = translate_query(
         original_query=query,
         rdf_classes=rdf_classes,
         rdf_properties=rdf_properties,
-    ).get("translated_query")
+        rdf_examples=rdf_examples,
+    ).get("translated_queries")
     sparql = SPARQLWrapper(SPARQL_ENDPOINT)
     sparql.setReturnFormat(JSON)
-    sparql.setQuery(sparql_query)
-    return sparql.queryAndConvert()
+    final_results = []
+    for sparql_query in sparql_queries:
+        try:
+            sparql.setQuery(sparql_query)
+            results = sparql.queryAndConvert()
+            results = str(results["results"]["bindings"])
+            final_results.append(results)
+            time.sleep(5)
+        except:
+            continue
+    return final_results
 
 
 fetch_data = dspy.Tool(
@@ -66,13 +83,13 @@ fetch_data = dspy.Tool(
 
 class ReactSig(dspy.Signature):
     query: str = dspy.InputField()
-    solution: ListInformation = dspy.OutputField(desc="The answer to the query")
+    solution: ListInformation = dspy.OutputField(desc="The answer to the query with links")
 
 
 class StreamReactSig(dspy.Signature):
     query: str = dspy.InputField()
     solution: str = dspy.OutputField(
-        desc="The answer to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
+        desc="The answer to the query with detailed answers, links and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
     )
 
 
@@ -124,13 +141,9 @@ class Digest:
 
     def _build_query(self, query: str) -> str:
         system_prompt = """
-            You excel at addressing search query using the context you have. You do not make mistakes.
-            Extract answers to the query from the context and provide links associated with each RDF entity.
-            All links pointing to specific traits should be translated to CD links using the trait id (numeric code) and the dataset name specifically.
-            Original trait link: https://rdf.genenetwork.org/v1/id/trait_BXD_16339
-            Trait id: 16339
-            Dataset name: BXDPublish
-            New trait link: https://cd.genenetwork.org/show_trait?trait_id=16339&dataset=BXDPublish\n
+            You excel at addressing search query using the information you have. You do not make mistakes.
+            Extract answers to the query from the context.
+            Provide links to each trait page. You can find the link of a specific trait by querying SPARQL for object with the predicate gnt:has_trait_page and the trait as subject.
             Format your entire response as valid HTML. Use tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>. Do not wrap the response in markdown code blocks.
             """
         return f"{system_prompt}\n{query}"

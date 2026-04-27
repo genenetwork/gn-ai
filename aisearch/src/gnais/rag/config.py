@@ -51,13 +51,17 @@ class Generation(dspy.Signature):
     context: list = dspy.InputField(desc="Background information")
     feedback: ListInformation = dspy.OutputField(desc="System response to the query")
 
+
 class StreamGeneration(dspy.Signature):
     """Wrap generation interface"""
 
     input_text: str = dspy.InputField(desc="Query and instructions")
     chat_history: list = dspy.InputField(desc="History of conversation")
     context: list = dspy.InputField(desc="Background information")
-    feedback: str = dspy.OutputField(desc="System response to the query that has a list of detailed answers and the final answer")
+    feedback: str = dspy.OutputField(
+        desc="System response to the query that has a list of detailed answers and the final answer"
+    )
+
 
 generate = dspy.Predict(Generation)
 generate_stream = dspy.Predict(StreamGeneration)
@@ -73,15 +77,41 @@ class Reformat(dspy.Signature):
 reformat = dspy.Predict(Reformat)
 
 
-class SPARQLGenerator(dspy.Signature):
-    """Generate a SPARQL SELECT query from a natural language question.
-    Use the provided schema to construct valid queries."""
+class SemanticReformulation(dspy.Signature):
+    """Pick examples in the provided list that are semantically related to the user query and reformulate differently query using extracted terms for better search.
+    Reformulated queries should not yet be a SPARQL query.
+    Example:
+    Original query: What do you know about muscle?
+    Reformulated query: What do you know about http://rdf.genenetwork.org/v1/id/phenotype_Skeletal_muscular__Grip_strength__mean_peak_force_of_3_trials_in_B6_BXD_F1_males_and_females_at_6_months_of_age_on_normal_chow_diet__all_Nash_Annex_cases___newtons_?"""
 
     original_query: str = dspy.InputField(desc="User query")
-    classes_info: str = dspy.InputField(desc="Mapping for available classes")
-    properties_info: str = dspy.InputField(desc="Mapping for available properties")
+    examples: list = dspy.InputField(desc="List of examples showing terms available in RDF")
+    reformulated_queries: list[str] = dspy.OutputField(
+        desc="Top 10 reformulated queries from original terms using semantically close terms from the list of examples"
+    )
+
+
+reformulate = dspy.Predict(SemanticReformulation)
+
+
+class SPARQLGenerator(dspy.Signature):
+    """Generate a SPARQL SELECT query from a natural language question.
+    Use the provided schema to construct valid queries. No syntax error will be accepted.
+    Check the syntax and conformity to examples of the final queries before returning them.
+    Exclude any query that does not meet the expectations.
+    When available, provide link to the trait page by looking for the object with predicate gnt:has_trait_page for each subject."""
+
+    original_query: str = dspy.InputField()
+    rdf_classes: list = dspy.InputField(desc="RDF classes extracted from the graph")
+    rdf_properties: list = dspy.InputField(
+        desc="RDF properties extracted from the graph"
+    )
+    rdf_examples: list = dspy.InputField(
+        desc="Real RDF examples in the graph that you can use to build correct SPARQL queries"
+    )
     sparql_queries: list[str] = dspy.OutputField(
-        desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
+        desc="""Top 5 valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using RDF examples as baseline.
+       In the SELECT queries, add an optional condition to identify object for subject having a gnt:has_trait_page predicate."""
     )
 
 
@@ -89,8 +119,9 @@ generate_sparql = dspy.Predict(SPARQLGenerator)
 
 
 class AnswerGenerator(dspy.Signature):
-    """Generate a natural language answer from SPARQL query results."""
+    """Generate a natural language answer from SPARQL query results and possible chat history."""
 
+    requirements: str = dspy.InputField(desc="Set of instructions you must tightly follow")
     original_query: str = dspy.InputField(desc="Query provided")
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
@@ -100,6 +131,7 @@ class AnswerGenerator(dspy.Signature):
 class StreamAnswerGenerator(dspy.Signature):
     """Generate a streamed natural language answer from SPARQL query results."""
 
+    requirements: str = dspy.InputField(desc="Set of instructions you must tightly follow")
     original_query: str = dspy.InputField(desc="Query provided")
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
