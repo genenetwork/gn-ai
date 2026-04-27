@@ -14,6 +14,8 @@ class Config:
     if DB_PATH is None:
         raise RuntimeError("DB_PATH is not set")
 
+    MEM0_PATH = os.path.join(DB_PATH, "mem0_chroma")
+
     SEED = os.environ.get("SEED")
     if SEED is None:
         raise RuntimeError("SEED is not set")

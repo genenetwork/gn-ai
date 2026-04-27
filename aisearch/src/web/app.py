@@ -3,6 +3,8 @@ import uuid
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
 from quart import Quart, jsonify, request, render_template, Response, session
 from flask_caching import Cache
 from flask_limiter import Limiter
@@ -55,6 +57,37 @@ if not app.config.get("MODEL_TYPE"):
 
 
 dspy.configure(lm=dspy.LM(**LLM_CONFIG))
+
+#  Shared mem0 memory instance (loaded once at server startup)
+_MEMORY = Memory(config=MemoryConfig(
+    llm={
+        "provider": "litellm",
+        "config": {
+            "model": "moonshot/kimi-k2-0711-preview",
+            "temperature": 0.5,
+            "max_tokens": 2_000,
+            "api_key": Config.API_KEY,
+        },
+    },
+    embedder={
+        "provider": "huggingface",
+        "config": {
+            "model": "Qwen/Qwen3-Embedding-0.6B",
+            "embedding_dims": 1024,
+            "model_kwargs": {
+                "trust_remote_code": True,
+                "device": "cuda" if torch.cuda.is_available() else "cpu",
+            },
+        },
+    },
+    vector_store={
+        "provider": "chroma",
+        "config": {
+            "collection_name": "mem0",
+            "path": Config.MEM0_PATH,
+        },
+    },
+))
 
 def _format_sse(event: str, data: str) -> str:
     lines = data.splitlines() or [""]
@@ -139,7 +172,7 @@ async def search_stream():
             _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
         )
         try:
-            async for event in hybrid_search(query, user_id=user_id):
+            async for event in hybrid_search(query, user_id=user_id, memory=_MEMORY):
                 if final_sent:
                     break
 

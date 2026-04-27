@@ -4,79 +4,107 @@ import argparse
 import asyncio
 import os
 
+from dotenv import load_dotenv
 import dspy
 import torch
+from typing import Any
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
 from gnais.search.agent import agent_search
 
 
-SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
-if SPARQL_ENDPOINT is None:
-    raise ValueError("SPARQL_ENDPOINT must be specified to access database")
-SEED = os.getenv("SEED")
-if SEED is None:
-    raise ValueError("SEED must be specified for reproducibility")
-MODEL_NAME = os.getenv("MODEL_NAME")
-if MODEL_NAME is None:
-    raise ValueError("MODEL_NAME must be specified - either proprietary or local")
-MODEL_TYPE = os.getenv("MODEL_TYPE")
-if MODEL_TYPE is None:
-    raise ValueError("MODEL_TYPE must be specified")
-
-
-torch.manual_seed(SEED)
-
-if torch.cuda.is_available():
-    torch.cuda.manual_seed_all(SEED)
-
-
-if int(MODEL_TYPE) == 0:
-    llm = dspy.LM(
-        model=f"openai/{MODEL_NAME}",
-        api_base="http://localhost:7501/v1",
-        api_key="local",
-        model_type="chat",
-        max_tokens=10_000,
-        n_ctx=10_000,
-        seed=2_025,
-        temperature=0,
-        verbose=False,
-    )
-elif int(MODEL_TYPE) == 1:
-    API_KEY = os.getenv("API_KEY")
-    if API_KEY is None:
-        raise ValueError("Valid API_KEY must be specified to use the proprietary model")
-    llm = dspy.LM(
-        MODEL_NAME,
-        api_key=API_KEY,
-        max_tokens=10_000,
-        temperature=0,
-        verbose=False,
-    )
-else:
-    raise ValueError("MODEL_TYPE must be 0 or 1")
-
-
-dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
-
-
-async def digest(query: str):
-    output = ""
-    async for chunk in agent_search(query=query, sparql_url=SPARQL_ENDPOINT):
-        if isinstance(chunk, dict) and "final" in chunk:
-            final = chunk["final"]
-            output = final
-            print(final, end="", flush=True)
-        else:
-            output += chunk
-            print(chunk, end="", flush=True)
-    print()
-    return output
+def digest(query: str, memory: Any = None, user_id: str = "default_user"):
+    async def _run():
+        output = ""
+        async for chunk in agent_search(query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id):
+            if isinstance(chunk, dict) and "final" in chunk:
+                final = chunk["final"]
+                output = final
+                print(final, end="", flush=True)
+            else:
+                output += chunk
+                print(chunk, end="", flush=True)
+        print()
+        return output
+    return asyncio.run(_run())
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", default=".env", help="Path to .env file")
     parser.add_argument("query", help="Search query")
+    parser.add_argument("--user-id", default="test-user", help="Mem0 user identity")
     args = parser.parse_args()
 
-    output = asyncio.run(digest(args.query))
+    load_dotenv(dotenv_path=args.env_file)
+
+    CORPUS_PATH = os.getenv("CORPUS_PATH")
+    DB_PATH = os.getenv("DB_PATH")
+    SEED = os.getenv("SEED")
+    MODEL_NAME = os.getenv("MODEL_NAME")
+    MODEL_TYPE = os.getenv("MODEL_TYPE")
+    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+
+    torch.manual_seed(SEED)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(SEED)
+
+    if int(MODEL_TYPE) == 0:
+        llm = dspy.LM(
+            model=f"openai/{MODEL_NAME}",
+            api_base="http://localhost:7501/v1",
+            api_key="local",
+            model_type="chat",
+            max_tokens=10_000,
+            n_ctx=10_000,
+            seed=2_025,
+            temperature=0,
+            verbose=False,
+        )
+    elif int(MODEL_TYPE) == 1:
+        API_KEY = os.getenv("API_KEY")
+        llm = dspy.LM(
+            MODEL_NAME,
+            api_key=API_KEY,
+            max_tokens=10_000,
+            temperature=0.1,
+            verbose=False,
+        )
+    else:
+        raise ValueError("MODEL_TYPE must be 0 or 1")
+
+    dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
+
+    memory_config = MemoryConfig(
+        llm={
+            "provider": "litellm",
+            "config": {
+                "model": "moonshot/kimi-k2-0711-preview",
+                "temperature": 0.1,
+                "max_tokens": 2_000,
+                "api_key": API_KEY,
+            },
+        },
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
+            },
+        },
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "path": os.path.join(DB_PATH, "mem0_chroma"),
+            },
+        },
+    )
+    memory = Memory(config=memory_config)
+    output = digest(args.query, memory=memory, user_id=args.user_id)
     print(output)

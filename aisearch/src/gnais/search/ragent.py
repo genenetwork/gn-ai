@@ -94,26 +94,32 @@ def _get_retrievers():
     }
 
 
-async def _rag_search(query: str, user_id: str = "default_user"):
+async def _rag_search(query: str, user_id: str = "default_user", memory=None):
     retrievers = _get_retrievers()
     retriever = (
         retrievers["kw"]
         if classify_search(query).get("decision") == "keyword"
         else retrievers["sem"]
     )
-    async for item in rag_search(query, retriever=retriever, user_id=user_id):
+    async for item in rag_search(query, retriever=retriever, user_id=user_id, memory=memory):
         yield item
 
 
-_grag_search = partial(graph_rag_search, sparql_url=Config.SPARQL_ENDPOINT)
+async def _grag_search(query: str, user_id: str = "default_user", memory=None):
+    async for chunk in graph_rag_search(
+        query, sparql_url=Config.SPARQL_ENDPOINT, memory=memory, user_id=user_id
+    ):
+        yield chunk
+
+
 _agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
 
 
 async def _stream_component(
-    source: str, search_func: Any, query: str, queue: asyncio.Queue, user_id: str
+    source: str, search_func: Any, query: str, queue: asyncio.Queue, **kwargs
 ) -> None:
     try:
-        async for chunk in search_func(query, user_id=user_id):
+        async for chunk in search_func(query, **kwargs):
             if isinstance(chunk, dict) and "final" in chunk:
                 await queue.put(
                     StreamEvent(source=source, kind="final", content=chunk["final"])
@@ -128,7 +134,7 @@ async def _stream_component(
         await queue.put(StreamEvent(source=source, kind="done", content=""))
 
 
-async def hybrid_search(query: str, user_id: str = "default_user"):
+async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     """Run hybrid search with concurrent RAG, GraphRAG, and Agent.
 
     Yields :class:`StreamEvent` dicts for progress from each component,
@@ -136,9 +142,9 @@ async def hybrid_search(query: str, user_id: str = "default_user"):
     """
     queue: asyncio.Queue = asyncio.Queue()
     tasks = [
-        asyncio.create_task(_stream_component("rag", _rag_search, query, queue, user_id)),
-        asyncio.create_task(_stream_component("grag", _grag_search, query, queue, user_id)),
-        asyncio.create_task(_stream_component("agent", _agent_search, query, queue, user_id)),
+        asyncio.create_task(_stream_component("rag", _rag_search, query, queue, user_id=user_id, memory=memory)),
+        asyncio.create_task(_stream_component("grag", _grag_search, query, queue, user_id=user_id, memory=memory)),
+        asyncio.create_task(_stream_component("agent", _agent_search, query, queue, user_id=user_id, memory=memory)),
     ]
 
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
