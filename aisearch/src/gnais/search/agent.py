@@ -4,15 +4,8 @@ from typing import Any
 
 import dspy
 from gnais.search.tools import make_sparql_fetch_tool, MemoryTools
+from gnais.search.prompts import AGENT_SYSTEM_PROMPT
 
-
-_SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
-Links: expand ALL turtle prefixes before using in <a href>.
-EXamples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
-gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
-Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
-Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
-"""
 
 
 class AgentSig(dspy.Signature):
@@ -60,7 +53,7 @@ def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "def
     )
 
 
-async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
+async def agent_search(query: str, sparql_url: str, system_prompt: str = AGENT_SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
     """Run agent-based search with SPARQL tool calling and optional memory.
 
     Yields stream chunks and a final prediction dict.
@@ -68,7 +61,7 @@ async def agent_search(query: str, sparql_url: str, system_prompt: str = _SYSTEM
     stream_react = _build_stream_react(sparql_url, memory=memory, user_id=user_id)
 
     async for value in stream_react(
-            query=f"{_SYSTEM_PROMPT}\n{query}",
+            query=f"{system_prompt}\n{query}",
             config={"cache": False}
     ):
         if isinstance(value, dspy.Prediction):
