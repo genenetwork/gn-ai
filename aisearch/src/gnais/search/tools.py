@@ -41,8 +41,8 @@ def with_memory(memory_type: str = "interaction"):
 
             kwargs["chat_history"] = chat_history
             async for value in func(*args, **kwargs):
-                if isinstance(value, dspy.Prediction):
-                    feedback = str(value.get("feedback"))
+                if isinstance(value, dict):
+                    feedback = str(value.get("final"))
                     if memory_tools and feedback:
                         memory_tools.store_memory(
                             f"Query: {query} \nFeedback: {feedback}",
