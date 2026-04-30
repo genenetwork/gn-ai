@@ -7,6 +7,7 @@ import asyncio
 
 import dspy
 from gnais.search.tools import with_memory
+from gnais.search.prompts import RAG_SYSTEM_PROMPT
 from typing import Any
 
 
@@ -29,24 +30,16 @@ _RAG_STREAM = dspy.streamify(
     include_final_prediction_in_output_stream=True,
 )
 
-_SYSTEM_PROMPT = """Answer from the context and chat history. Use chat history first.
-Links: expand ALL turtle prefixes before using in <a href>.
-Examples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
-gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
-Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
-Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
-"""
-
-
 @with_memory(memory_type="rag")
 async def rag_search(
     query: str,
     retriever: Any,
+    system_prompt: str = RAG_SYSTEM_PROMPT,
     user_id: str = "default_user",
     memory: Any = None,
     chat_history: list = [],
 ):
-    prompt = f"{_SYSTEM_PROMPT}\nQuery: {query}"
+    prompt = f"{system_prompt}\nQuery: {query}"
 
     context = await asyncio.to_thread(retriever.invoke, query)
 
