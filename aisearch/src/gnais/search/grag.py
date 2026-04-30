@@ -4,15 +4,8 @@ import sys
 import dspy
 from gnais.search.classification import extract_keywords
 from gnais.search.tools import with_memory, _ONTOLOGY_HINTS
+from gnais.search.prompts import GRAG_SYSTEM_PROMPT
 from SPARQLWrapper import JSON, SPARQLWrapper
-
-_SYSTEM_PROMPT = """Answer from SPARQL results. Work with partial data; do not apologize for query errors.
-Links: expand ALL turtle prefixes before using in <a href>.
-Examples (not complete): pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/ taxon:→http://purl.uniprot.org/taxonomy/
-gn:→http://rdf.genenetwork.org/v1/id gnc:→http://rdf.genenetwork.org/v1/category gnt:→http://rdf.genenetwork.org/v1/term dcat:→http://www.w3.org/ns/dcat dct:→http://purl.org/dc/terms rdfs:→http://www.w3.org/2000/01/rdf-schema skos:→http://www.w3.org/2004/02/skos/core
-Trait links: use the URL from gnt:has_trait_page. Never build trait URLs manually.
-Format as HTML using <p>,<ul>,<li>,<a>,<strong>,<em>,<br>. No markdown blocks.
-"""
 
 
 def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
@@ -75,6 +68,7 @@ _GRAG_STREAM = dspy.streamify(
 async def graph_rag_search(
     query: str,
     sparql_url: str,
+    system_prompt: str = GRAG_SYSTEM_PROMPT,
     memory=None,
     user_id: str = "default_user",
     chat_history: list = [],
@@ -82,7 +76,7 @@ async def graph_rag_search(
     keywords_pred = extract_keywords(query)
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
-    prompt = f"{_SYSTEM_PROMPT}\n{keywords}"
+    prompt = f"{system_prompt}\n{keywords}"
 
     sparql_gen = _SPARQL_GEN(
         original_query=prompt,
