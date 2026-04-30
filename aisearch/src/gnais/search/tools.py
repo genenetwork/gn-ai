@@ -1,4 +1,5 @@
 import asyncio
+import dspy
 from mem0 import Memory
 import functools
 import logging
@@ -14,31 +15,6 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
     logging.getLogger(_mem0_logger).addFilter(
         lambda record: "Failed to add history" not in record.getMessage()
     )
-
-
-class SummarizeMemory(dspy.Signature):
-    """Convert the system response into a concise, storable memory fact.
-
-    RULES:
-    1. ALWAYS output a non-empty summary (minimum 10 characters).
-    2. Prefer user-specific information (preferences, plans, facts about the user).
-    3. If no user-specific info exists, output a factual one‑sentence summary of the response.
-    4. Keep the summary under 300 characters. If longer, truncate or prioritise the most important part.
-
-    Examples:
-      full_response: "The capital of France is Paris. It is known for the Eiffel Tower."
-      summary: "Learned that Paris is the capital of France."
-
-      full_response: "I see you're interested in Haskell. It's a purely functional programming language."
-      summary: "User is interested in Haskell."
-
-      full_response: "No relevant memories found for your query."
-      summary: "No prior memories found for this query."
-    """
-    full_response: str = dspy.InputField()
-    summary: str = dspy.OutputField(desc="Plain-text memory fact, ≤300 characters long.  NEVER empty.")
-
-_summarize_memory = dspy.Predict(SummarizeMemory)
 
 
 def with_memory(memory_type: str = "interaction"):
@@ -64,24 +40,16 @@ def with_memory(memory_type: str = "interaction"):
                     chat_history = [memories]
 
             kwargs["chat_history"] = chat_history
-
-            # Run the original async generator and collect the full response
-            full_response = ""
-            async for chunk in func(*args, **kwargs):
-                if isinstance(chunk, dict) and "final" in chunk:
-                    full_response = chunk["final"]
-                yield chunk
-            if memory_tools is not None and full_response:
-                pred = await asyncio.to_thread(
-                    _summarize_memory, full_response=full_response
-                )
-                summary = getattr(pred, "summary", "").strip()
-                if len(summary) > 10:   # Avoid storing trivial summaries
-                    memory_tools.store_memory(
-                        summary,
-                        user_id=user_id,
-                        run_id=memory_type
-                    )
+            async for value in func(*args, **kwargs):
+                if isinstance(value, dspy.Prediction):
+                    feedback = str(value.get("feedback"))
+                    if memory_tools and feedback:
+                        memory_tools.store_memory(
+                            f"Query: {query} \nFeedback: {feedback}",
+                            user_id=user_id,
+                            run_id=memory_type
+                        )
+                yield value
         return wrapper
     return decorator
 
