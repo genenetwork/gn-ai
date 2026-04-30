@@ -11,6 +11,10 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.search.ragent import hybrid_search
+from gnais.search.prompts import (
+    GN_FACT_EXTRACTION_PROMPT,
+    GN_UPDATE_MEMORY_PROMPT,
+)
 from markupsafe import escape
 
 app = Quart(__name__)
@@ -60,6 +64,8 @@ dspy.configure(lm=dspy.LM(**LLM_CONFIG))
 
 #  Shared mem0 memory instance (loaded once at server startup)
 _MEMORY = Memory(config=MemoryConfig(
+    custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+    custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
     llm={
         "provider": "litellm",
         "config": {

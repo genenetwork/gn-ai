@@ -11,6 +11,10 @@ from typing import Any
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
 from gnais.search.grag import graph_rag_search
+from gnais.search.prompts import (
+    GN_FACT_EXTRACTION_PROMPT,
+    GN_UPDATE_MEMORY_PROMPT,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -72,6 +76,8 @@ if __name__ == "__main__":
     dspy.configure(lm=llm)
 
     memory_config = MemoryConfig(
+        custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+        custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
         llm={
             "provider": "litellm",
             "config": {
