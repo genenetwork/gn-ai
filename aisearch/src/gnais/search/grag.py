@@ -1,10 +1,9 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
-import sys
 import dspy
 from gnais.search.classification import extract_keywords
-from gnais.search.tools import with_memory, _ONTOLOGY_HINTS
-from gnais.search.prompts import GRAG_SYSTEM_PROMPT
+from gnais.search.tools import with_memory, build_schema_hint
+from gnais.search.prompts import GRAG_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 from SPARQLWrapper import JSON, SPARQLWrapper
 
 
@@ -77,11 +76,11 @@ async def graph_rag_search(
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
     prompt = f"{system_prompt}\n{keywords}"
+    schema_hint = build_schema_hint(sparql_url)
 
     sparql_gen = _SPARQL_GEN(
-        original_query=prompt,
-        classes_info=_ONTOLOGY_HINTS,
-        properties_info="See ontology hints above.",
+        original_query=SPARQL_SYSTEM_PROMPT,
+        schema_hint=schema_hint,
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
     if sparql_queries is None:
