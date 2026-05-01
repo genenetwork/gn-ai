@@ -15,6 +15,112 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
     )
 
 
+# ---------------------------------------------------------------------------
+# Ground-truth schema from Virtuoso (memoized)
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=1)
+def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
+    """Fetch literal and object properties from the live Virtuoso endpoint.
+
+    Returns (literal_props, object_props) where each is a set of full URIs.
+    """
+    sparql = SPARQLWrapper(sparql_uri)
+    sparql.setReturnFormat(JSON)
+
+    literal_query = """
+        SELECT DISTINCT ?p
+        FROM <http://rdf.genenetwork.org/v1>
+        WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
+    """
+    sparql.setQuery(literal_query)
+    lit_result = sparql.queryAndConvert()
+    literal_props = {
+        b["p"]["value"]
+        for b in lit_result.get("results", {}).get("bindings", [])
+        if b.get("p")
+    }
+
+    object_query = """
+        SELECT DISTINCT ?p
+        FROM <http://rdf.genenetwork.org/v1>
+        WHERE { ?s ?p ?o . FILTER isIRI(?o) }
+    """
+    sparql.setQuery(object_query)
+    obj_result = sparql.queryAndConvert()
+    object_props = {
+        b["p"]["value"]
+        for b in obj_result.get("results", {}).get("bindings", [])
+        if b.get("p")
+    }
+
+    return literal_props, object_props
+
+
+# Compact namespace → prefix map for prompt output
+_PREFIX_MAP = {
+    "http://rdf.genenetwork.org/v1/term/": "gnt",
+    "http://rdf.genenetwork.org/v1/category/": "gnc",
+    "http://rdf.genenetwork.org/v1/id/": "gn",
+    "http://purl.org/dc/terms/": "dct",
+    "http://www.w3.org/ns/dcat#": "dcat",
+    "http://www.w3.org/2000/01/rdf-schema#": "rdfs",
+    "http://www.w3.org/2004/02/skos/core#": "skos",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#": "rdf",
+    "http://www.w3.org/2002/07/owl#": "owl",
+    "http://purl.org/linked-data/cube#": "qb",
+    "http://purl.org/linked-data/sdmx/2009/measure#": "sdmx-measure",
+    "http://rdf-vocabulary.ddialliance.org/xkos#": "xkos",
+    "https://schema.org/": "schema",
+    "http://rdf.ncbi.nlm.nih.gov/pubmed/": "pubmed",
+    "http://xmlns.com/foaf/0.1/": "foaf",
+    "http://purl.org/spar/fabio/": "fabio",
+    "http://prismstandard.org/namespaces/basic/2.0/": "prism",
+}
+
+
+def _uri_to_qname(uri: str) -> str:
+    """Convert a full URI to a prefixed name, or return the URI in angle brackets."""
+    for ns, prefix in sorted(_PREFIX_MAP.items(), key=lambda x: -len(x[0])):
+        if uri.startswith(ns):
+            return f"{prefix}:{uri[len(ns):]}"
+    return f"<{uri}>"
+
+
+def build_schema_hint(sparql_uri: str) -> str:
+    """Build a compact schema hint from the live Virtuoso endpoint."""
+    literal_props, object_props = _fetch_schema(sparql_uri)
+    return f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
+PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+
+LITERAL PROPERTIES (object is a string/number/date):
+{" ,".join([_uri_to_qname(uri) for uri in literal_props])}
+
+
+OBJECT PROPERTIES (object is a URI / another resource):
+{" ,".join([_uri_to_qname(uri) for uri in object_props])}
+
+CRITICAL RULES:
+1. Only use properties listed above. Do NOT invent new ones.
+2. Literal properties give strings/numbers — use FILTER, not ?o a ...
+3. Object properties link to other resources — you can chain ?o a <Class>.
+4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
+"""
+
+# ---------------------------------------------------------------------------
+# mem0 / memory tools (unchanged)
+# ---------------------------------------------------------------------------
+
 def with_memory(memory_type: str = "interaction"):
     """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
     def decorator(func):
@@ -57,7 +163,7 @@ def with_memory(memory_type: str = "interaction"):
 class MemoryTools:
     """Tools for interacting with the Mem0 memory system."""
 
-    def __init__(self, memory: Memory):
+    def __init__(self, memory):
         self.memory = memory
 
     def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
@@ -106,63 +212,35 @@ class MemoryTools:
             return f"Error deleting memory: {str(e)}"
 
 
-# Prefix table for SPARQL and link expansion.
-# When you see pubmed:123 use http://rdf.ncbi.nlm.nih.gov/pubmed/123
-# When you see taxon:10090 use http://purl.uniprot.org/taxonomy/10090
-_SPARQL_PREFIXES = """PREFIX dcat: <http://www.w3.org/ns/dcat#>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX foaf: <http://xmlns.com/foaf/0.1/>
-PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
-PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
-PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX qb: <http://purl.org/linked-data/cube#>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX sdmx-measure: <http://purl.org/linked-data/sdmx/2009/measure#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-PREFIX taxon: <http://purl.uniprot.org/taxonomy/>
-PREFIX xkos: <http://rdf-vocabulary.ddialliance.org/xkos#>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-PREFIX pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/>
-PREFIX schema: <https://schema.org/>
-"""
+def check_link(url: str) -> str:
+    """Check whether a URL is reachable.
 
-# Compact ontology hints extracted from gn-transform-databases/examples/*.scm
-_QUERY_HINTS = """ONTOLOGY
-Classes: gnc:set(strain group),gnc:species,gnc:strain,dcat:Dataset,gnc:phenotype_trait,gnc:phenotype,gnc:gene,gnc:probeset,gnc:marker
-data: dct:title,rdfs:label,skos:definition,gnt:gene_symbol,gnt:symbol,gnt:has_target_id,gnt:chr,gnt:mb
-Links: gnt:has_trait_page→trait URL,gnt:has_phenotype_data→set→dataset,gnt:has_phenotype_trait→dataset→trait,gnt:has_strain→species→set,gnt:has_species→set→species,gnt:has_genotype_data→set→dataset
-trait: gnt:has_trait_page→https://genenetwork.org/show_trait?trait_id=ID&dataset=NAME
-PREFIX pubmed:→http://rdf.ncbi.nlm.nih.gov/pubmed/; taxon:→http://purl.uniprot.org/taxonomy/
-EXAMPLES
-1) Traits by keyword:
-SELECT?t?name?page{?d a dcat:Dataset;gnt:has_phenotype_trait?t.?t rdfs:label?name;gnt:has_trait_page?page.FILTER(CONTAINS(LCASE(STR(?name)),LCASE("WORD")))}
-2) Datasets by set:
-SELECT?d?title{?s a gnc:set;rdfs:label?l;gnt:has_phenotype_data?d.?d a dcat:Dataset;dct:title?title.FILTER(CONTAINS(LCASE(STR(?l)),LCASE("SET")))}
-3) Genes by symbol:
-SELECT?g?sym{?g a gnc:gene;gnt:gene_symbol?sym.FILTER(CONTAINS(LCASE(STR(?sym)),LCASE("SYM")))}
-4) Traits in dataset:
-SELECT?t?name?page{?d a dcat:Dataset;dct:title?dt;gnt:has_phenotype_trait?t.?t rdfs:label?name;gnt:has_trait_page?page.FILTER(CONTAINS(LCASE(STR(?dt)),LCASE("DATASET")))}
-RULES
-- Every query starts with PREFIX block above.
-- Only use declared prefixes. Do NOT invent new ones.
-- When you see pubmed:ID in results, expand to http://rdf.ncbi.nlm.nih.gov/pubmed/ID.
-- Do NOT prepend http://rdf.genenetwork.org/v1/id/ to URIs that are already complete.
-- Use gnt:has_trait_page for trait URLs. Never construct trait URLs manually.
-"""
+    Returns a short status string suitable for feeding back to the LLM.
+    """
+    if _is_internal_iri(url):
+        return f"Invalid URL (RDF identifier, not a web page): {url}"
 
+    if url in _CHECKED_URLS:
+        ok = _CHECKED_URLS[url]
+        return f"{'Valid' if ok else 'Invalid'} URL: {url}"
 
-_ONTOLOGY_HINTS = _SPARQL_PREFIXES + "\n" + _QUERY_HINTS
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        ok = response.ok
+    except Exception as e:
+        ok = False
+
+    _CHECKED_URLS[url] = ok
+    return f"{'Valid' if ok else 'Invalid'} URL: {url}"
 
 
 class QueryTranslation(dspy.Signature):
     """Translate natural language to SPARQL SELECT. CRITICAL: every
     query MUST start with the PREFIX declarations. Only use declared
-    prefixes. Use ontology hints and example patterns."""
+    prefixes. Use the schema hints and example patterns."""
 
     original_query: str = dspy.InputField(desc="User query")
-    ontology_hints: str = dspy.InputField(desc="GeneNetwork ontology and example query patterns")
+    ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     translated_query: str = dspy.OutputField(
         desc="Valid SPARQL SELECT query with PREFIX declarations"
     )
@@ -172,14 +250,18 @@ _translate_query = dspy.Predict(QueryTranslation)
 
 
 def sparql_fetch(query: str, sparql_uri: str) -> Any:
+    schema_hint = build_schema_hint(sparql_uri)
     sparql_query = _translate_query(
         original_query=query,
-        ontology_hints=_SPARQL_PREFIXES + "\n" + _QUERY_HINTS,
+        ontology_hints=schema_hint,
     ).get("translated_query")
+
     sparql = SPARQLWrapper(sparql_uri)
     sparql.setReturnFormat(JSON)
     sparql.setQuery(sparql_query)
-    return sparql.queryAndConvert()
+    result = sparql.queryAndConvert()
+
+    return result
 
 
 @functools.lru_cache(maxsize=4)
