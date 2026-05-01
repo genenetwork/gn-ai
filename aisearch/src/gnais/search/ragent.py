@@ -54,9 +54,9 @@ class Synthesis(dspy.Signature):
         - <div class="card-title"><a href="URL">Name</a></div>
         - <div class="card-description">Description</div> (optional)
         - <div class="card-meta">Extra info</div> (optional)
+    - If there's need for a table, add a table with a <table class="data">
     - If no results were found, a <div class="note-box"> explaining why.
     - Any additional notes in a <div class="note-box"> at the end.
-    - If there's need for a table, add a table with (<table class="data">)
     """
 
     original_query: str = dspy.InputField()
