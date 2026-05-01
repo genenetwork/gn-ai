@@ -212,26 +212,29 @@ class MemoryTools:
             return f"Error deleting memory: {str(e)}"
 
 
-def check_link(url: str) -> str:
+def _check_link(url: str) -> str:
     """Check whether a URL is reachable.
 
     Returns a short status string suitable for feeding back to the LLM.
     """
-    if _is_internal_iri(url):
-        return f"Invalid URL (RDF identifier, not a web page): {url}"
-
-    if url in _CHECKED_URLS:
-        ok = _CHECKED_URLS[url]
-        return f"{'Valid' if ok else 'Invalid'} URL: {url}"
-
     try:
         response = requests.head(url, allow_redirects=True, timeout=10)
         ok = response.ok
     except Exception as e:
         ok = False
 
-    _CHECKED_URLS[url] = ok
-    return f"{'Valid' if ok else 'Invalid'} URL: {url}"
+
+check_link = dspy.Tool(
+    name="check_link",
+    desc="Test URL and check if it resolves",
+    args={
+        "url": {
+            "type": "string",
+            "desc": "URL or link to check",
+        },
+    },
+    func=_check_link,
+)
 
 
 class QueryTranslation(dspy.Signature):
