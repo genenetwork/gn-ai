@@ -1,12 +1,10 @@
 import asyncio
-import dspy
-from mem0 import Memory
 import functools
 import logging
-import os
 from typing import Any
 
 import dspy
+import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
 
 # mem0's internal history store can spew sqlite transaction warnings;

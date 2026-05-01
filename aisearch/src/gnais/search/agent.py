@@ -3,7 +3,7 @@
 from typing import Any
 
 import dspy
-from gnais.search.tools import make_sparql_fetch_tool, MemoryTools
+from gnais.search.tools import make_sparql_fetch_tool, make_check_link_tool, MemoryTools
 from gnais.search.prompts import AGENT_SYSTEM_PROMPT
 
 
@@ -17,7 +17,7 @@ class AgentSig(dspy.Signature):
 
 def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "default_user"):
     """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
-    tools = [make_sparql_fetch_tool(sparql_url)]
+    tools = [make_sparql_fetch_tool(sparql_url), make_check_link_tool()]
 
     if memory is not None:
         mt = MemoryTools(memory)
