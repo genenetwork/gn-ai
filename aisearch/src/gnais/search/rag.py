@@ -16,7 +16,12 @@ class RAG(dspy.Signature):
     chat_history: list = dspy.InputField(desc="History of conversation")
     context: list = dspy.InputField(desc="Background information")
     feedback: str = dspy.OutputField(
-        desc="System response to the query that has a list of detailed answers and the final answer"
+        desc="""System response to the query — answer ONLY from the context provided.
+HTML answer. Link rules:
+- ONLY use <a href> for full web URLs that literally appear in the context.
+- NEVER invent RDF/IRI links (e.g., gn:BXD, http://rdf.genenetwork.org/v1/id/BXD).
+- For entities (datasets, genes, traits, strains) use PLAIN TEXT or <strong> tags.
+- If a URL is not in the context, do NOT create a link for it."""
     )
 
 

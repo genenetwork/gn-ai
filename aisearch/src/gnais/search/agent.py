@@ -11,7 +11,30 @@ from gnais.search.prompts import AGENT_SYSTEM_PROMPT
 class AgentSig(dspy.Signature):
     query: str = dspy.InputField()
     solution: str = dspy.OutputField(
-        desc="The answer to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>"
+        desc="""Return the answer as valid HTML only. Use only safe body tags such as
+<p>, <ul>, <ol>, <li>, <a>, <strong>, <em>, <code>, <pre>, and <br>.
+Do not use Markdown. Do not wrap the answer in ```html fences.
+
+Link correctness is mandatory. Every <a href="..."> URL MUST come directly
+from a SPARQL tool result returned by the configured Virtuoso endpoint.
+Never invent, infer, concatenate, normalize, rewrite, shorten, or guess URLs.
+Never create links from literals, labels, names, descriptions, IDs, QNames,
+CURIEs, blank nodes, or user text. Only bind and use URI/IRI values returned
+by SPARQL variables.
+
+Before emitting any hyperlink, verify that the href value is exactly one of
+the URI/IRI strings present in the latest relevant SPARQL result set. If no
+verified URI/IRI is available, omit the hyperlink and render plain text instead.
+Broken links are worse than no links.
+
+When querying SPARQL, prefer fast, selective, bounded queries. Use LIMIT,
+specific predicates, VALUES, FILTERs, and focused graph patterns where possible.
+Avoid broad scans, unbounded OPTIONAL chains, SELECT *, and expensive regex
+unless strictly necessary. Retrieve only the variables needed for the answer,
+especially URI/IRI variables intended for links.
+
+The final answer must include detailed reasoning where useful, followed by a
+clear final answer, but all content must remain valid HTML."""
     )
 
 

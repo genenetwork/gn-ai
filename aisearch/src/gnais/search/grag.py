@@ -28,17 +28,17 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
 class SPARQLGenerator(dspy.Signature):
     """Generate valid SPARQL SELECT queries from a natural language question.
 
-    CRITICAL RULES:
-    1. EVERY query MUST start with the PREFIX declarations provided above.
-    2. Only use prefixes that are declared above. Do NOT invent new prefixes.
-    3. Use the classes and properties from the schema to build the query.
-    4. Prefer simple SELECT ?s ?p ?o patterns when exploring.
-    5. When looking for traits, use gnt:has_trait_page to get direct URLs.
+CRITICAL SPARQL RULES:
+1. Literal properties (e.g., gnt:gene_symbol, dct:title) hold strings/numbers. Use FILTER, not ?o a ...
+2. Object properties (e.g., gnt:has_phenotype_trait) link to other resources. You can chain ?o a <Class>.
+3. gnt:has_trait_page gives the direct URL; never construct trait URLs manually.
+4. Only use properties listed in the provided schema. Do NOT invent new ones.
+5. EVERY query MUST start with the PREFIX declarations.
+6. ALWAYS try to build FAST and EFFICIENT sparql queries.
     """
 
     original_query: str = dspy.InputField(desc="User query")
-    classes_info: str = dspy.InputField(desc="Available classes")
-    properties_info: str = dspy.InputField(desc="Available properties")
+    schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     sparql_queries: list[str] = dspy.OutputField(
         desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
     )
@@ -49,7 +49,7 @@ class GraphRAG(dspy.Signature):
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
     feedback: str = dspy.OutputField(
-        desc="System response to the query that has a list of detailed answers and the final answer"
+        desc="System response to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>.  Links from sparql results can only be formed by valid IRIs and NOT literals."
     )
 
 
