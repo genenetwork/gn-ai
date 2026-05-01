@@ -63,32 +63,28 @@ _synthesize = dspy.streamify(
     include_final_prediction_in_output_stream=True,
 )
 
-@lru_cache(maxsize=8)
-def _get_retrievers():
-    """Build (and cache) the RAG ensemble retrievers.  This is expensive
-    because it tokenizes the entire corpus for BM25, so we only do it
-    when hybrid_search is actually invoked."""
-    chroma_db = get_chroma_db(
-        chroma_db_path=Config.DB_PATH,
-        embed_model="Qwen/Qwen3-Embedding-0.6B",
-    )
-    docs = get_docs(Config.CORPUS_PATH)
-    return {
-        "kw": create_ensemble_retriever(
-            chroma_db=chroma_db, docs=docs, keyword_weight=0.7
-        ),
-        "sem": create_ensemble_retriever(
-            chroma_db=chroma_db, docs=docs, keyword_weight=0.5
-        ),
-    }
+
+# KLUDGE: Creating the retrievers takes the longest time.  Here, we
+# create them at module time once.  XXXX: Find a better way to remove
+# these globals!
+_CHROMA_DB = get_chroma_db(
+    chroma_db_path=Config.DB_PATH,
+    embed_model="Qwen/Qwen3-Embedding-0.6B",
+)
+_DOCS = get_docs(Config.CORPUS_PATH)
+_KW_RETRIEVER = create_ensemble_retriever(
+    chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.7
+)
+_SEM_RETRIEVER = create_ensemble_retriever(
+    chroma_db=_CHROMA_DB, docs=_DOCS, keyword_weight=0.5
+)
 
 
 async def _rag_search(query: str, user_id: str = "default_user", memory=None):
-    retrievers = _get_retrievers()
     retriever = (
-        retrievers["kw"]
+        _KW_RETRIEVER
         if classify_search(query).get("decision") == "keyword"
-        else retrievers["sem"]
+        else _SEM_RETRIEVER
     )
     async for item in rag_search(query=query, retriever=retriever, user_id=user_id, memory=memory):
         yield item
