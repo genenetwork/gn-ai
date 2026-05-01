@@ -40,7 +40,7 @@ clear final answer, but all content must remain valid HTML."""
 
 def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "default_user"):
     """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
-    tools = [make_sparql_fetch_tool(sparql_url), check_link()]
+    tools = [make_sparql_fetch_tool(sparql_url), check_link]
 
     if memory is not None:
         mt = MemoryTools(memory)

@@ -220,13 +220,15 @@ def _check_link(url: str) -> str:
     try:
         response = requests.head(url, allow_redirects=True, timeout=10)
         ok = response.ok
-    except Exception as e:
+    except Exception:
         ok = False
+
+    return f"{'Valid URL' if ok else 'Invalid URL'} URL: {url}"
 
 
 check_link = dspy.Tool(
     name="check_link",
-    desc="Test URL and check if it resolves",
+    desc="Check whether a URL is valid and reachable. Call this BEFORE putting any URL in an <a href>. Returns 'Valid URL: ...' or 'Invalid URL: ...'.",
     args={
         "url": {
             "type": "string",
