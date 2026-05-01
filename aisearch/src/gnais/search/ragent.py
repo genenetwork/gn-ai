@@ -3,7 +3,6 @@
 __all__ = (
     "hybrid_search",
     "Synthesis",
-    "SearchResult",
     "StreamEvent",
 )
 
@@ -19,16 +18,6 @@ from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.classification import classify_search
 from gnais.search.corpus import get_docs, get_chroma_db, create_ensemble_retriever
-
-
-class SearchResult(TypedDict):
-    """Standardized search result schema with flexible results array"""
-
-    query: str
-    status: str  # "success" or "partial_success"
-    summary: str
-    results: list[dict]  # Each result has: type, name, description, url, extra
-    note: str
 
 
 class StreamEvent(TypedDict):
