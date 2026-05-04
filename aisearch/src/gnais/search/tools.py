@@ -58,7 +58,7 @@ def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX owl: <http://www.w3.org/2002/07/owl#>
         PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-        SELECT SAMPLE(?obj) AS ?object
+        SELECT SAMPLE(?obj) AS ?o
         WHERE {
         ?subject skos:member ?obj .
         BIND(skos:member AS ?predicate)
@@ -71,9 +71,9 @@ def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
     sparql.setQuery(snapshot_query)
     snapshot_result = sparql.queryAndConvert()
     snapshot_objs = {
-        b["p"]["value"]
-        for b in obj_result.get("results", {}).get("bindings", [])
-        if b.get("p")
+        b["o"]["value"]
+        for b in snapshot_result.get("results", {}).get("bindings", [])
+        if b.get("o")
     }
 
     return literal_props, object_props, snapshot_objs
@@ -267,14 +267,18 @@ check_link = dspy.Tool(
 
 
 class QueryTranslation(dspy.Signature):
-    """Translate natural language to SPARQL SELECT. CRITICAL: every
-    query MUST start with the PREFIX declarations. Only use declared
-    prefixes. Use the schema hints and example patterns."""
+    """Translate natural language query to SPARQL SELECT following closely instructions below.
+    Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
+    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
+    CRITICAL:
+    1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
+    2. Leverage as many schema hints as possible.
+    """
 
     original_query: str = dspy.InputField(desc="User query")
-    ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
-    translated_query: str = dspy.OutputField(
-        desc="Valid SPARQL SELECT query with PREFIX declarations. Compare object snapshot in ontology hint to keywords in the original query to find best semantic matches. Use those matches to build the query."
+    schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
+    translated_queries: list[str] = dspy.OutputField(
+        desc="Top 10 valid SPARQL SELECT query with PREFIX declarations."
     )
 
 
@@ -283,23 +287,30 @@ _translate_query = dspy.Predict(QueryTranslation)
 
 def sparql_fetch(query: str, sparql_uri: str) -> Any:
     schema_hint = build_schema_hint(sparql_uri)
-    sparql_query = _translate_query(
+    sparql_queries = _translate_query(
         original_query=query,
-        ontology_hints=schema_hint,
-    ).get("translated_query")
+        schema_hint=schema_hint,
+    ).get("translated_queries")
 
     sparql = SPARQLWrapper(sparql_uri)
     sparql.setReturnFormat(JSON)
-    sparql.setQuery(sparql_query)
-    result = sparql.queryAndConvert()
+    results = []
+    for i, sparql_query in enumerate(sparql_queries):
+        try:
+            sparql.setQuery(sparql_query)
+            result = sparql.queryAndConvert()
+            bindings = result.get("results", {}).get("bindings", [])
+            results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+        except Exception as e:
+            results.append(
+                f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
+            )
+    return "\n\n".join(results)
 
-    return result
 
-
-@functools.lru_cache(maxsize=4)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
-    def _fetch(query_str: str) -> Any:
-        return sparql_fetch(query_str, sparql_uri)
+    def _fetch(query: str) -> Any:
+        return sparql_fetch(query, sparql_uri)
 
     return dspy.Tool(
         name="fetch_data",
