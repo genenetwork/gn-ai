@@ -131,16 +131,17 @@ Extract facts related to:
 10. **User preferences or constraints** (e.g., "only mouse data", "exclude BXD", "interested in liver tissue")
 11. **Any scientific conclusions, relationships, or insights** drawn from the data
 
-Rules:
+RULES:
 - Extract facts even if they seem like "general knowledge" — in a genomics context, knowing that "Trees have branches" is irrelevant, but knowing that "Apoe is associated with lipid metabolism" or "BXD is a mouse recombinant inbred panel" is highly valuable.
 - Be specific. Prefer "User asked about QTL mapping for body weight in BXD mice" over "User asked about genetics".
+- Organize information chronologically using timestamps to facilitate retrieval based on time. The last interaction should the last in your collection.
 - Preserve identifiers (gene symbols, trait IDs, marker names, PubMed IDs) exactly as they appear.
 - If the input is a simple greeting or purely conversational filler with no scientific content, return an empty array.
 - If the input contains actionable scientific information, extract it.
 
 Return facts in JSON format: {"facts": ["fact1", "fact2", ...]}
 
-Examples:
+EXAMPLES:
 
 Input: Hi there.
 Output: {"facts": []}
@@ -165,7 +166,7 @@ Output: {"facts": ["Publication PMID:15234567 mentions significant QTL on Chr 1 
 
 GN_UPDATE_MEMORY_PROMPT = """You are a memory manager for a genomics research assistant (GeneNetwork). Compare the new facts below with the existing memories and determine the appropriate action for EACH new fact.
 
-Actions:
+ACTIONS:
 - ADD: The new fact contains information not present in existing memories. This includes:
   - Different gene symbols, trait names, dataset names, or marker IDs
   - Different chromosomal locations or genomic coordinates
@@ -178,7 +179,7 @@ Actions:
 - NONE: The new fact is truly identical to an existing memory. Only use this if the fact conveys exactly the same information with no new details. Note: in genomics, related but different entities (e.g., "gene Apoe" vs "gene Apoa1", "Chr 1" vs "Chr 2", "BXD" vs "HMDP") are DIFFERENT and should be ADDED, not treated as identical.
 - DELETE: The new fact directly contradicts an existing memory (e.g., a corrected gene location, a retracted finding).
 
-Critical rules for genomics data:
+CRITICAL RULES FOR GENOMICS DATA:
 1. **Gene symbols are case-sensitive and distinct.** "Apoe" and "APOE" may refer to the same gene (mouse vs human ortholog), but "Apoe" and "Apoa1" are completely different. When in doubt, ADD.
 2. **Trait names are distinct.** "body weight" and "liver weight" are different traits. ADD both.
 3. **Dataset/panel names are distinct.** "BXD", "HMDP", "Collaborative Cross" are different. ADD each.
