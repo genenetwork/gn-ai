@@ -209,14 +209,14 @@ class MemoryTools:
     def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
         """Store information in memory."""
         try:
-            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata)
+            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=True)
             return f"Stored memory: {content}"
         except Exception as e:
             return f"Error storing memory: {str(e)}"
 
-    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 20) -> str:
+    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 10) -> str:
         """Search for relevant memories."""
-        results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id, "limit": limit})
+        results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id}, top_k=limit)
         if results and results.get("results"):
             return "\n".join([r["memory"] for r in results["results"]])
         return ""
