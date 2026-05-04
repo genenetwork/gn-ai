@@ -11,7 +11,7 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
     sparql = SPARQLWrapper(sparql_url)
     sparql.setReturnFormat(JSON)
     results = []
-    for i, sparql_query in enumerate(sparql_queries, 1):
+    for i, sparql_query in enumerate(sparql_queries):
         try:
             sparql.setQuery(sparql_query)
             result = sparql.queryAndConvert()
@@ -27,19 +27,19 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
 class SPARQLGenerator(dspy.Signature):
     """Generate valid SPARQL SELECT queries from a natural language question.
 
-CRITICAL SPARQL RULES:
-1. Literal properties (e.g., gnt:gene_symbol, dct:title) hold strings/numbers. Use FILTER, not ?o a ...
-2. Object properties (e.g., gnt:has_phenotype_trait) link to other resources. You can chain ?o a <Class>.
-3. gnt:has_trait_page gives the direct URL; never construct trait URLs manually.
-4. Only use properties listed in the provided schema. Do NOT invent new ones.
-5. EVERY query MUST start with the PREFIX declarations.
-6. ALWAYS try to build FAST and EFFICIENT sparql queries.
+    CRITICAL SPARQL RULES:
+    1. Literal properties (e.g., gnt:gene_symbol, dct:title) hold strings/numbers. Use FILTER, not ?o a ...
+    2. Object properties (e.g., gnt:has_phenotype_trait) link to other resources. You can chain ?o a <Class>.
+    3. gnt:has_trait_page gives the direct URL; never construct trait URLs manually.
+    4. Only use properties listed in the provided schema. Do NOT invent new ones.
+    5. EVERY query MUST start with the PREFIX declarations.
+    6. ALWAYS try to build FAST and EFFICIENT sparql queries.
     """
 
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="As many and exhaustive SPARQL SELECT queries that you can generate and that can retrieve all relevant information necessary to provide detailed answer to the user query."
+        desc="Top 10 valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query. Compare object snapshot in schema hint to keywords in the original query to find best semantic matches. Use those matches to build the queries. Do not forget to add PREFIX declarations before each actual query."
     )
 
 
@@ -75,11 +75,12 @@ async def graph_rag_search(
     keywords_pred = extract_keywords(query)
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
-    prompt = f"{system_prompt}\n{keywords}"
+    grag_prompt = f"{system_prompt}\nQuery: {query}"
+    sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery:{query}\nEssential keywords in query:{keywords}"
     schema_hint = build_schema_hint(sparql_url)
 
     sparql_gen = _SPARQL_GEN(
-        original_query=SPARQL_SYSTEM_PROMPT,
+        original_query=sparql_prompt,
         schema_hint=schema_hint,
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
@@ -89,7 +90,7 @@ async def graph_rag_search(
     sparql_results = _run_sparql_queries(sparql_url, sparql_queries)
 
     async for value in _GRAG_STREAM(
-        original_query=prompt,
+        original_query=grag_prompt,
         sparql_results=sparql_results,
         chat_history=chat_history,
     ):
