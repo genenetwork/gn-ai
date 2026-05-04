@@ -4,7 +4,7 @@ from typing import Any
 
 import dspy
 from gnais.search.tools import make_sparql_fetch_tool, check_link, MemoryTools
-from gnais.search.prompts import AGENT_SYSTEM_PROMPT
+from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
 
 
 
@@ -76,7 +76,7 @@ def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "def
     )
 
 
-async def agent_search(query: str, sparql_url: str, system_prompt: str = AGENT_SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
+async def agent_search(query: str, sparql_url: str, system_prompt: str = GENERAL_SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
     """Run agent-based search with SPARQL tool calling and optional memory.
 
     Yields stream chunks and a final prediction dict.

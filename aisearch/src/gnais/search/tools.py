@@ -19,7 +19,6 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
 # Ground-truth schema from Virtuoso (memoized)
 # ---------------------------------------------------------------------------
 
-@functools.lru_cache(maxsize=1)
 def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
     """Fetch literal and object properties from the live Virtuoso endpoint.
 
