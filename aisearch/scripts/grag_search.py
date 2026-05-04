@@ -2,7 +2,6 @@ import argparse
 import asyncio
 import os
 import sys
-import warnings
 
 from dotenv import load_dotenv
 import dspy
@@ -16,10 +15,8 @@ from gnais.search.prompts import (
     GN_UPDATE_MEMORY_PROMPT,
 )
 
-warnings.filterwarnings("ignore")
 
-
-def digest(query: str, memory: Any = None, user_id: str = "default_user"):
+def digest(query: str, memory: Memory = None, user_id: str = "default_user"):
     async def _run():
         async for chunk in graph_rag_search(query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id):
             print(chunk, end="", flush=True)
@@ -74,6 +71,14 @@ if __name__ == "__main__":
         raise ValueError("MODEL_TYPE must be 0 or 1")
 
     dspy.configure(lm=llm)
+
+    # NOTE: Find a better way of doing this
+    # This a turnaround
+    # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
+    if "moonshot" in MODEL_NAME.lower():
+        os.environ["MOONSHOT_API_KEY"]=API_KEY
+    elif "anthropic" in MODEL_NAME.lower():
+        os.environ["ANTHROPIC_API_KEY"]=API_KEY
 
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
