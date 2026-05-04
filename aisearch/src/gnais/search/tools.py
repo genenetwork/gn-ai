@@ -274,7 +274,7 @@ class QueryTranslation(dspy.Signature):
     original_query: str = dspy.InputField(desc="User query")
     ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     translated_query: str = dspy.OutputField(
-        desc="Valid SPARQL SELECT query with PREFIX declarations"
+        desc="Valid SPARQL SELECT query with PREFIX declarations. Compare object snapshot in ontology hint to keywords in the original query to find best semantic matches. Use those matches to build the query."
     )
 
 
