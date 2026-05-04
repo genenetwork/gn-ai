@@ -1,14 +1,11 @@
-"""
-Module with RAG system for AI search in GeneNetwork
-Embedding model = Qwen/Qwen3-Embedding-0.6B
-"""
+"""Module with RAG system for AI search in GeneNetwork"""
 
 import asyncio
+from typing import Any
 
 import dspy
-from gnais.search.tools import with_memory
 from gnais.search.prompts import RAG_SYSTEM_PROMPT
-from typing import Any
+from gnais.search.tools import with_memory
 
 
 class RAG(dspy.Signature):
@@ -41,7 +38,7 @@ async def rag_search(
     retriever: Any,
     system_prompt: str = RAG_SYSTEM_PROMPT,
     user_id: str = "default_user",
-    memory: Any = None,
+    memory=None,
     chat_history: list = [],
 ):
     prompt = f"{system_prompt}\nQuery: {query}"

@@ -43,7 +43,6 @@ def _digest(query: str, memory: Memory, user_id: str, corpus_path: str, db_path:
             retriever=retriever,
             memory=memory,
             user_id=user_id,
-            chat_history=[],
         ):
             parts.append(str(chunk))
         return "".join(parts)
