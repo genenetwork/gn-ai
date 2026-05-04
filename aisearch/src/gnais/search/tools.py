@@ -216,7 +216,7 @@ class MemoryTools:
 
     def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 20) -> str:
         """Search for relevant memories."""
-        results = self.memory.search(query, user_id=user_id, run_id=run_id, limit=limit)
+        results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id, "limit": limit})
         if results and results.get("results"):
             return "\n".join([r["memory"] for r in results["results"]])
         return ""
@@ -224,7 +224,7 @@ class MemoryTools:
     def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
         """Get all memories for a user."""
         try:
-            results = self.memory.get_all(user_id=user_id, run_id=run_id, filters=filters)
+            results = self.memory.get_all(filters={"user_id": user_id, "run_id": run_id})
             if not results or not results.get("results"):
                 return "No memories found for this user."
 
