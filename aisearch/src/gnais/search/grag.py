@@ -1,9 +1,10 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
 import dspy
+import time
 from gnais.search.classification import extract_keywords
 from gnais.search.tools import with_memory, build_schema_hint
-from gnais.search.prompts import GRAG_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
+from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 from SPARQLWrapper import JSON, SPARQLWrapper
 
 
@@ -17,6 +18,9 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
             result = sparql.queryAndConvert()
             bindings = result.get("results", {}).get("bindings", [])
             results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+            # NOTE: Break communication with endpoint between queries
+            # to prevent connection closure to endpoint
+            time.sleep(5)
         except Exception as e:
             results.append(
                 f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
@@ -25,8 +29,9 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
 
 
 class SPARQLGenerator(dspy.Signature):
-    """Generate valid SPARQL SELECT queries from a natural language question.
-
+    """Generate valid SPARQL SELECT queries from a natural language query following closely instructions below.
+    Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
+    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
     CRITICAL SPARQL RULES:
     1. Literal properties (e.g., gnt:gene_symbol, dct:title) hold strings/numbers. Use FILTER, not ?o a ...
     2. Object properties (e.g., gnt:has_phenotype_trait) link to other resources. You can chain ?o a <Class>.
@@ -39,7 +44,7 @@ class SPARQLGenerator(dspy.Signature):
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Top 10 valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query. Compare object snapshot in schema hint to keywords in the original query to find best semantic matches. Use those matches to build the queries. Do not forget to add PREFIX declarations before each actual query."
+        desc="Top 20 valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using schema hints."
     )
 
 
@@ -67,7 +72,7 @@ _GRAG_STREAM = dspy.streamify(
 async def graph_rag_search(
     query: str,
     sparql_url: str,
-    system_prompt: str = GRAG_SYSTEM_PROMPT,
+    system_prompt: str = GENERAL_SYSTEM_PROMPT,
     memory=None,
     user_id: str = "default_user",
     chat_history: list = [],
@@ -76,9 +81,8 @@ async def graph_rag_search(
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
     grag_prompt = f"{system_prompt}\nQuery: {query}"
-    sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery:{query}\nEssential keywords in query:{keywords}"
+    sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}\nEssential keywords in query: {keywords}"
     schema_hint = build_schema_hint(sparql_url)
-
     sparql_gen = _SPARQL_GEN(
         original_query=sparql_prompt,
         schema_hint=schema_hint,
