@@ -76,11 +76,19 @@ if __name__ == "__main__":
 
     dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
 
+    # NOTE: Find a better way of doing this
+    # This a turnaround
+    # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
+    if "moonshot" in MODEL_NAME.lower():
+        os.environ["MOONSHOT_API_KEY"]=API_KEY
+    elif "anthropic" in MODEL_NAME.lower():
+        os.environ["ANTHROPIC_API_KEY"]=API_KEY
+
     memory_config = MemoryConfig(
         llm={
             "provider": "litellm",
             "config": {
-                "model": "moonshot/kimi-k2-0711-preview",
+                "model": MODEL_NAME,
                 "temperature": 0.1,
                 "max_tokens": 2_000,
                 "api_key": API_KEY,
