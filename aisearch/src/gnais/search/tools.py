@@ -267,7 +267,7 @@ check_link = dspy.Tool(
 
 
 class QueryTranslation(dspy.Signature):
-    """Translate natural language query to SPARQL SELECT following closely instructions below.
+    """
     Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
     Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
     CRITICAL:
@@ -306,6 +306,7 @@ def sparql_fetch(query: str, sparql_uri: str) -> Any:
                 f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
             )
     return "\n\n".join(results)
+
 
 @functools.lru_cache(maxsize=64)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:

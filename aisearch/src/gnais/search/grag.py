@@ -29,7 +29,7 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
 
 
 class SPARQLGenerator(dspy.Signature):
-    """Generate valid SPARQL SELECT queries from a natural language query following closely instructions below.
+    """
     Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
     Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
     CRITICAL SPARQL RULES:
