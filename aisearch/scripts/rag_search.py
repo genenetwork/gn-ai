@@ -108,7 +108,7 @@ if __name__ == "__main__":
         llm={
             "provider": "litellm",
             "config": {
-                "model": "moonshot/kimi-k2-0711-preview",
+                "model": MODEL_NAME,
                 "temperature": 0.1,
                 "max_tokens": 2_000,
                 "api_key": API_KEY,
