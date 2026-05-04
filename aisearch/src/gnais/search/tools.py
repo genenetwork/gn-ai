@@ -117,45 +117,85 @@ CRITICAL RULES:
 5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
 """
 
+
+class QueryTranslation(dspy.Signature):
+    """Translate natural language to SPARQL SELECT. CRITICAL: every
+    query MUST start with the PREFIX declarations. Only use declared
+    prefixes. Use the schema hints and example patterns."""
+
+    original_query: str = dspy.InputField(desc="User query")
+    ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
+    translated_query: str = dspy.OutputField(
+        desc="Valid SPARQL SELECT query with PREFIX declarations"
+    )
+
+
+_translate_query = dspy.Predict(QueryTranslation)
+
+
+def sparql_fetch(query: str, sparql_uri: str) -> Any:
+    schema_hint = build_schema_hint(sparql_uri)
+    sparql_query = _translate_query(
+        original_query=query,
+        ontology_hints=schema_hint,
+    ).get("translated_query")
+
+    sparql = SPARQLWrapper(sparql_uri)
+    sparql.setReturnFormat(JSON)
+    sparql.setQuery(sparql_query)
+    result = sparql.queryAndConvert()
+
+    return result
+
+
+@functools.lru_cache(maxsize=4)
+def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
+    def _fetch(query_str: str) -> Any:
+        return sparql_fetch(query_str, sparql_uri)
+
+    return dspy.Tool(
+        name="fetch_data",
+        desc="Fetch RDF data around GeneNetwork data through SPARQL",
+        args={
+            "query": {
+                "type": "string",
+                "desc": "SPARQL query to run to fetch relevant data",
+            },
+        },
+        func=_fetch,
+    )
+
+
+def _check_link(url: str) -> str:
+    """Check whether a URL is reachable.
+
+    Returns a short status string suitable for feeding back to the LLM.
+    """
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        ok = response.ok
+    except Exception:
+        ok = False
+
+    return f"{'Valid URL' if ok else 'Invalid URL'} URL: {url}"
+
+
+check_link = dspy.Tool(
+    name="check_link",
+    desc="Check whether a URL is valid and reachable. Call this BEFORE putting any URL in an <a href>. Returns 'Valid URL: ...' or 'Invalid URL: ...'.",
+    args={
+        "url": {
+            "type": "string",
+            "desc": "URL or link to check",
+        },
+    },
+    func=_check_link,
+)
+
+
 # ---------------------------------------------------------------------------
 # mem0 / memory tools (unchanged)
 # ---------------------------------------------------------------------------
-
-def with_memory(memory_type: str = "interaction"):
-    """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
-    def decorator(func):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            query = kwargs.get("query")
-            memory = kwargs.get("memory")
-            user_id = kwargs.get("user_id")
-
-            # Pre: search memories and build chat_history
-            chat_history = []
-            memory_tools = None
-            if memory is not None:
-                memory_tools = MemoryTools(memory)
-                memories = memory_tools.search_memories(
-                    query,
-                    user_id=user_id,
-                    run_id=memory_type
-                )
-                if memories:
-                    chat_history = [memories]
-
-            kwargs["chat_history"] = chat_history
-            async for value in func(*args, **kwargs):
-                if isinstance(value, dict):
-                    feedback = str(value.get("final"))
-                    if memory_tools and feedback:
-                        memory_tools.store_memory(
-                            f"Query: {query} \nFeedback: {feedback}",
-                            user_id=user_id,
-                            run_id=memory_type
-                        )
-                yield value
-        return wrapper
-    return decorator
 
 
 # KLUDGE: For now this is lifted from:
@@ -212,76 +252,38 @@ class MemoryTools:
             return f"Error deleting memory: {str(e)}"
 
 
-def _check_link(url: str) -> str:
-    """Check whether a URL is reachable.
+def with_memory(memory_type: str = "interaction"):
+    """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            query = kwargs.get("query")
+            memory = kwargs.get("memory")
+            user_id = kwargs.get("user_id")
 
-    Returns a short status string suitable for feeding back to the LLM.
-    """
-    try:
-        response = requests.head(url, allow_redirects=True, timeout=10)
-        ok = response.ok
-    except Exception:
-        ok = False
+            # Pre: search memories and build chat_history
+            chat_history = []
+            memory_tools = None
+            if memory is not None:
+                memory_tools = MemoryTools(memory)
+                memories = memory_tools.search_memories(
+                    query,
+                    user_id=user_id,
+                    run_id=memory_type
+                )
+                if memories:
+                    chat_history = [memories]
 
-    return f"{'Valid URL' if ok else 'Invalid URL'} URL: {url}"
-
-
-check_link = dspy.Tool(
-    name="check_link",
-    desc="Check whether a URL is valid and reachable. Call this BEFORE putting any URL in an <a href>. Returns 'Valid URL: ...' or 'Invalid URL: ...'.",
-    args={
-        "url": {
-            "type": "string",
-            "desc": "URL or link to check",
-        },
-    },
-    func=_check_link,
-)
-
-
-class QueryTranslation(dspy.Signature):
-    """Translate natural language to SPARQL SELECT. CRITICAL: every
-    query MUST start with the PREFIX declarations. Only use declared
-    prefixes. Use the schema hints and example patterns."""
-
-    original_query: str = dspy.InputField(desc="User query")
-    ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
-    translated_query: str = dspy.OutputField(
-        desc="Valid SPARQL SELECT query with PREFIX declarations"
-    )
-
-
-_translate_query = dspy.Predict(QueryTranslation)
-
-
-def sparql_fetch(query: str, sparql_uri: str) -> Any:
-    schema_hint = build_schema_hint(sparql_uri)
-    sparql_query = _translate_query(
-        original_query=query,
-        ontology_hints=schema_hint,
-    ).get("translated_query")
-
-    sparql = SPARQLWrapper(sparql_uri)
-    sparql.setReturnFormat(JSON)
-    sparql.setQuery(sparql_query)
-    result = sparql.queryAndConvert()
-
-    return result
-
-
-@functools.lru_cache(maxsize=4)
-def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
-    def _fetch(query_str: str) -> Any:
-        return sparql_fetch(query_str, sparql_uri)
-
-    return dspy.Tool(
-        name="fetch_data",
-        desc="Fetch RDF data around GeneNetwork data through SPARQL",
-        args={
-            "query": {
-                "type": "string",
-                "desc": "SPARQL query to run to fetch relevant data",
-            },
-        },
-        func=_fetch,
-    )
+            kwargs["chat_history"] = chat_history
+            async for value in func(*args, **kwargs):
+                if isinstance(value, dict):
+                    feedback = str(value.get("final"))
+                    if memory_tools and feedback:
+                        memory_tools.store_memory(
+                            f"Query: {query} \nFeedback: {feedback}",
+                            user_id=user_id,
+                            run_id=memory_type
+                        )
+                yield value
+        return wrapper
+    return decorator
