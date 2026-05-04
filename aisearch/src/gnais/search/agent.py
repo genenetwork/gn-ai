@@ -3,9 +3,13 @@
 from typing import Any
 
 import dspy
-from gnais.search.tools import make_sparql_fetch_tool, check_link, MemoryTools
 from gnais.search.prompts import AGENT_SYSTEM_PROMPT
-
+from gnais.search.tools import (
+    MemoryTools,
+    check_link,
+    make_sparql_fetch_tool,
+    with_memory,
+)
 
 
 class AgentSig(dspy.Signature):
@@ -38,26 +42,9 @@ clear final answer, but all content must remain valid HTML."""
     )
 
 
-def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "default_user"):
+def _build_stream_react(sparql_url: str, memory=None, user_id: str = "default_user"):
     """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
     tools = [make_sparql_fetch_tool(sparql_url), check_link]
-
-    if memory is not None:
-        mt = MemoryTools(memory)
-
-        def store_memory(content: str) -> str:
-            """Store information in memory for future recall."""
-            return mt.store_memory(content, user_id=user_id, run_id="agent")
-
-        def search_memories(query: str, limit: int = 20) -> str:
-            """Search for relevant memories using a query string."""
-            return mt.search_memories(query, user_id=user_id, run_id="agent", limit=limit)
-
-        def get_all_memories() -> str:
-            """Retrieve all stored memories for the current user."""
-            return mt.get_all_memories(user_id=user_id, run_id="agent")
-
-        tools.extend([store_memory, search_memories, get_all_memories])
 
     return dspy.streamify(
         dspy.ReAct(
@@ -76,7 +63,15 @@ def _build_stream_react(sparql_url: str, memory: Any = None, user_id: str = "def
     )
 
 
-async def agent_search(query: str, sparql_url: str, system_prompt: str = AGENT_SYSTEM_PROMPT, user_id: str = "default_user", memory: Any = None):
+@with_memory(memory_type="agent")
+async def agent_search(
+    query: str,
+    sparql_url: str,
+    system_prompt: str = AGENT_SYSTEM_PROMPT,
+    user_id: str = "default_user",
+    memory=None,
+    chat_history: list = [],
+):
     """Run agent-based search with SPARQL tool calling and optional memory.
 
     Yields stream chunks and a final prediction dict.
@@ -84,8 +79,7 @@ async def agent_search(query: str, sparql_url: str, system_prompt: str = AGENT_S
     stream_react = _build_stream_react(sparql_url, memory=memory, user_id=user_id)
 
     async for value in stream_react(
-            query=f"{system_prompt}\n{query}",
-            config={"cache": False}
+        query=f"{system_prompt}\n{query}", config={"cache": False}
     ):
         if isinstance(value, dspy.Prediction):
             solution = getattr(value, "solution", None)
