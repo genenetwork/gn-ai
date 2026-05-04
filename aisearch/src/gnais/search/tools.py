@@ -19,6 +19,7 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
 # Ground-truth schema from Virtuoso (memoized)
 # ---------------------------------------------------------------------------
 
+@functools.lru_cache(maxsize=64)
 def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
     """Fetch literal and object properties from the live Virtuoso endpoint.
 
@@ -107,7 +108,7 @@ def _uri_to_qname(uri: str) -> str:
             return f"{prefix}:{uri[len(ns):]}"
     return f"<{uri}>"
 
-
+@functools.lru_cache(maxsize=64)
 def build_schema_hint(sparql_uri: str) -> str:
     """Build a compact schema hint from the live Virtuoso endpoint."""
     literal_props, object_props, snapshot_objs = _fetch_schema(sparql_uri)
@@ -306,7 +307,7 @@ def sparql_fetch(query: str, sparql_uri: str) -> Any:
             )
     return "\n\n".join(results)
 
-
+@functools.lru_cache(maxsize=64)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query: str) -> Any:
         return sparql_fetch(query, sparql_uri)
