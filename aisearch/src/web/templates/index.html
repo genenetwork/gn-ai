@@ -8,7 +8,7 @@
         <script src="https://unpkg.com/htmx-ext-sse@2.2.4/sse.js"></script>
         <script src="https://unpkg.com/hyperscript.org@0.9.12"></script>
         <link rel="stylesheet"
-              href="{{ url_for('static', filename='css/style.css') }}?v=2">
+              href="{{ url_for('static', filename='css/style.css') }}">
     </head>
     <body>
         <div class="header">
@@ -63,29 +63,171 @@
                   _="on htmx:beforeRequest
                          if no #search-input.value.trim() halt end
                          put 'none' into #empty-state's style.display
-			 on htmx:afterRequest
+                         on htmx:afterRequest
                          put '' into #search-input.value
-                         call #search-input.focus()
-                         wait 20ms
-                         set #chat-container.scrollTop to #chat-container.scrollHeight">
-                <input type="text"
-                       name="q"
-                       id="search-input"
-                       class="search-input"
-                       placeholder="Ask a question about genes, traits, or datasets..."
-                       autocomplete="off"
-                       autofocus>
+                         call #search-input.focus()">
+                <div class="textarea-box">
+                    <textarea name="q"
+                              id="search-input"
+                              class="search-input"
+                              placeholder="Ask a question about genes, traits, or datasets... (Shift+Enter for new line)"
+                              rows="1"
+                              autocomplete="off"
+                              autofocus></textarea>
+                    <button type="button"
+                            class="clear-btn"
+                            id="clear-btn"
+                            title="Clear message"
+                            aria-label="Clear message">×</button>
+                </div>
                 <button type="submit"
                         class="search-button"
                         id="search-btn"
-                        _="on click call focusInputAndScroll()">↑</button>
+                        aria-label="Send"
+                        title="Send">↑</button>
+                <button type="button"
+                        class="stop-button"
+                        id="stop-btn"
+                        aria-label="Stop generating"
+                        title="Stop generating">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2" />
+                    </svg>
+                </button>
             </form>
+            <div class="char-counter" id="char-counter">0 / 1000</div>
         </div>
+        <button id="scroll-to-bottom" class="scroll-to-bottom-btn" title="Scroll to bottom">↓</button>
+
         <script type="text/hyperscript">
-	 def focusInputAndScroll()
-	 call #search-input.focus()
-	 set #chat-container.scrollTop to #chat-container.scrollHeight
-	 end
+         def focusInput()
+         call #search-input.focus()
+         end
+        </script>
+        <script>
+        (function(){
+            const chat = document.getElementById('chat-container');
+            const btn = document.getElementById('scroll-to-bottom');
+            const messages = document.getElementById('messages');
+            if (!chat || !btn || !messages) return;
+            const THRESHOLD = 80;
+            let atBottom = true;
+
+            function check() {
+                atBottom = chat.scrollHeight - chat.scrollTop <= chat.clientHeight + THRESHOLD;
+                btn.classList.toggle('visible', !atBottom);
+            }
+
+            chat.addEventListener('scroll', check);
+            window.addEventListener('resize', check);
+
+            new MutationObserver(function(muts) {
+                var hit = muts.some(function(m) {
+                    return m.target.closest && m.target.closest('.stream-final-body');
+                });
+                if (!hit) return;
+                if (atBottom) chat.scrollTop = chat.scrollHeight;
+                else btn.classList.add('visible');
+            }).observe(messages, { childList: true, subtree: true });
+
+            btn.addEventListener('click', function(){
+                chat.scrollTop = chat.scrollHeight;
+                atBottom = true;
+                btn.classList.remove('visible');
+            });
+        })();
+        </script>
+        <script>
+        (function(){
+            const input = document.getElementById('search-input');
+            const sendBtn = document.getElementById('search-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const charCounter = document.getElementById('char-counter');
+            const messages = document.getElementById('messages');
+            const form = document.getElementById('search-form');
+            if (!input || !sendBtn || !stopBtn || !messages || !form) return;
+            const MAX_HEIGHT = 200;
+            const MAX_CHARS = 1000;
+
+            function autoGrow() {
+                input.style.height = 'auto';
+                var h = Math.min(input.scrollHeight, MAX_HEIGHT);
+                input.style.height = h + 'px';
+                input.style.overflowY = input.scrollHeight > MAX_HEIGHT ? 'auto' : 'hidden';
+            }
+
+            function updateUI() {
+                var len = input.value.length;
+                if (charCounter) {
+                    charCounter.textContent = len + ' / ' + MAX_CHARS;
+                    charCounter.classList.remove('warning', 'caution');
+                    if (len > 900) charCounter.classList.add('warning');
+                    else if (len > 700) charCounter.classList.add('caution');
+                }
+                if (clearBtn) clearBtn.style.display = len > 0 ? 'flex' : 'none';
+            }
+
+            function setStreaming(v) {
+                input.disabled = v;
+                sendBtn.style.display = v ? 'none' : 'flex';
+                stopBtn.style.display = v ? 'flex' : 'none';
+                if (!v) {
+                    input.focus();
+                    autoGrow();
+                    updateUI();
+                }
+            }
+
+            window.onStreamEnd = function() { setStreaming(false); };
+
+            form.addEventListener('htmx:afterRequest', function(evt) {
+                if (evt.detail.successful) setStreaming(true);
+                setTimeout(function() {
+                    autoGrow();
+                    updateUI();
+                }, 0);
+            });
+
+            stopBtn.addEventListener('click', function() {
+                var lastMsg = messages.lastElementChild;
+                if (lastMsg) lastMsg.remove();
+                setStreaming(false);
+            });
+
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    input.value = '';
+                    input.focus();
+                    autoGrow();
+                    updateUI();
+                });
+            }
+
+            input.addEventListener('input', function() {
+                autoGrow();
+                updateUI();
+            });
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter') return;
+                if (e.shiftKey) return;
+                e.preventDefault();
+                if (!input.disabled && input.value.trim()) {
+                    form.requestSubmit();
+                }
+            });
+
+            input.addEventListener('paste', function() {
+                setTimeout(function() {
+                    autoGrow();
+                    updateUI();
+                }, 0);
+            });
+
+            autoGrow();
+            updateUI();
+        })();
         </script>
     </body>
 </html>
