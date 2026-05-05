@@ -1,6 +1,7 @@
 import asyncio
 import functools
 import logging
+from datetime import datetime
 from typing import Any
 
 import dspy
@@ -144,127 +145,6 @@ def build_schema_hint(sparql_uri: str) -> str:
     5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
     """
 
-# ---------------------------------------------------------------------------
-# mem0 / memory tools (unchanged)
-# ---------------------------------------------------------------------------
-
-def with_memory(memory_type: str = "interaction"):
-    """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
-    def decorator(func):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            query = kwargs.get("query")
-            memory = kwargs.get("memory")
-            user_id = kwargs.get("user_id")
-
-            # Pre: search memories and build chat_history
-            chat_history = []
-            memory_tools = None
-            if memory is not None:
-                memory_tools = MemoryTools(memory)
-                memories = memory_tools.search_memories(
-                    query,
-                    user_id=user_id,
-                    run_id=memory_type
-                )
-                if memories:
-                    chat_history = [memories]
-
-            kwargs["chat_history"] = chat_history
-            async for value in func(*args, **kwargs):
-                if isinstance(value, dict):
-                    feedback = str(value.get("final"))
-                    if memory_tools and feedback:
-                        memory_tools.store_memory(
-                            f"Query: {query} \nFeedback: {feedback}",
-                            user_id=user_id,
-                            run_id=memory_type
-                        )
-                yield value
-        return wrapper
-    return decorator
-
-
-# KLUDGE: For now this is lifted from:
-# <https://dspy.ai/tutorials/mem0_react_agent/>
-class MemoryTools:
-    """Tools for interacting with the Mem0 memory system."""
-
-    def __init__(self, memory):
-        self.memory = memory
-
-    def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
-        """Store information in memory."""
-        try:
-            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata)
-            return f"Stored memory: {content}"
-        except Exception as e:
-            return f"Error storing memory: {str(e)}"
-
-    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 20) -> str:
-        """Search for relevant memories."""
-        results = self.memory.search(query, user_id=user_id, run_id=run_id, limit=limit)
-        if results and results.get("results"):
-            return "\n".join([r["memory"] for r in results["results"]])
-        return ""
-
-    def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
-        """Get all memories for a user."""
-        try:
-            results = self.memory.get_all(user_id=user_id, run_id=run_id, filters=filters)
-            if not results or not results.get("results"):
-                return "No memories found for this user."
-
-            memory_text = "All memories for user:\n"
-            for i, result in enumerate(results["results"]):
-                memory_text += f"{i}. {result['memory']}\n"
-            return memory_text
-        except Exception as e:
-            return f"Error retrieving memories: {str(e)}"
-
-    def update_memory(self, memory_id: str, new_content: str) -> str:
-        """Update an existing memory."""
-        try:
-            self.memory.update(memory_id, new_content)
-            return f"Updated memory with new content: {new_content}"
-        except Exception as e:
-            return f"Error updating memory: {str(e)}"
-
-    def delete_memory(self, memory_id: str) -> str:
-        """Delete a specific memory."""
-        try:
-            self.memory.delete(memory_id)
-            return "Memory deleted successfully."
-        except Exception as e:
-            return f"Error deleting memory: {str(e)}"
-
-
-def _check_link(url: str) -> str:
-    """Check whether a URL is reachable.
-
-    Returns a short status string suitable for feeding back to the LLM.
-    """
-    try:
-        response = requests.head(url, allow_redirects=True, timeout=10)
-        ok = response.ok
-    except Exception:
-        ok = False
-
-    return f"{'Valid URL' if ok else 'Invalid URL'} URL: {url}"
-
-
-check_link = dspy.Tool(
-    name="check_link",
-    desc="Check whether a URL is valid and reachable. Call this BEFORE putting any URL in an <a href>. Returns 'Valid URL: ...' or 'Invalid URL: ...'.",
-    args={
-        "url": {
-            "type": "string",
-            "desc": "URL or link to check",
-        },
-    },
-    func=_check_link,
-)
-
 
 class QueryTranslation(dspy.Signature):
     """
@@ -324,3 +204,126 @@ def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
         },
         func=_fetch,
     )
+
+
+def _check_link(url: str) -> str:
+    """Check whether a URL is reachable.
+
+    Returns a short status string suitable for feeding back to the LLM.
+    """
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=10)
+        ok = response.ok
+    except Exception:
+        ok = False
+
+    return f"{'Valid URL' if ok else 'Invalid URL'} URL: {url}"
+
+
+check_link = dspy.Tool(
+    name="check_link",
+    desc="Check whether a URL is valid and reachable. Call this BEFORE putting any URL in an <a href>. Returns 'Valid URL: ...' or 'Invalid URL: ...'.",
+    args={
+        "url": {
+            "type": "string",
+            "desc": "URL or link to check",
+        },
+    },
+    func=_check_link,
+)
+
+
+# ---------------------------------------------------------------------------
+# mem0 / memory tools (unchanged)
+# ---------------------------------------------------------------------------
+
+
+# KLUDGE: For now this is lifted from:
+# <https://dspy.ai/tutorials/mem0_react_agent/>
+class MemoryTools:
+    """Tools for interacting with the Mem0 memory system."""
+
+    def __init__(self, memory):
+        self.memory = memory
+
+    def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
+        """Store information in memory."""
+        try:
+            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=True)
+            return f"Stored memory: {content}"
+        except Exception as e:
+            return f"Error storing memory: {str(e)}"
+
+    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 10) -> str:
+        """Search for relevant memories."""
+        results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id}, top_k=limit)
+        if results and results.get("results"):
+            return "\n".join([r["memory"] for r in results["results"]])
+        return ""
+
+    def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
+        """Get all memories for a user."""
+        try:
+            results = self.memory.get_all(filters={"user_id": user_id, "run_id": run_id})
+            if not results or not results.get("results"):
+                return "No memories found for this user."
+
+            memory_text = "All memories for user:\n"
+            for i, result in enumerate(results["results"]):
+                memory_text += f"{i}. {result['memory']}\n"
+            return memory_text
+        except Exception as e:
+            return f"Error retrieving memories: {str(e)}"
+
+    def update_memory(self, memory_id: str, new_content: str) -> str:
+        """Update an existing memory."""
+        try:
+            self.memory.update(memory_id, new_content)
+            return f"Updated memory with new content: {new_content}"
+        except Exception as e:
+            return f"Error updating memory: {str(e)}"
+
+    def delete_memory(self, memory_id: str) -> str:
+        """Delete a specific memory."""
+        try:
+            self.memory.delete(memory_id)
+            return "Memory deleted successfully."
+        except Exception as e:
+            return f"Error deleting memory: {str(e)}"
+
+
+def with_memory(memory_type: str = "interaction"):
+    """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            query = kwargs.get("query")
+            memory = kwargs.get("memory")
+            user_id = kwargs.get("user_id")
+
+            # Pre: search memories and build chat_history
+            chat_history = []
+            memory_tools = None
+            if memory is not None:
+                memory_tools = MemoryTools(memory)
+                memories = memory_tools.search_memories(
+                    query,
+                    user_id=user_id,
+                    run_id=memory_type
+                )
+                if memories:
+                    chat_history = [memories]
+
+            kwargs["chat_history"] = chat_history
+            async for value in func(*args, **kwargs):
+                if isinstance(value, dict):
+                    feedback = str(value.get("final"))
+                    if memory_tools and feedback:
+                        memory_tools.store_memory(
+                            f"Time: {datetime.now().strftime("%m-%d %H:%M")}\nQuery: {query}\nAnswer: {feedback}",
+                            user_id=user_id,
+                            run_id=memory_type
+                        )
+                yield value
+        return wrapper
+    return decorator

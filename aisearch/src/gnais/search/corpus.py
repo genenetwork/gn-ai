@@ -1,4 +1,6 @@
 import json
+import warnings
+
 from functools import lru_cache
 from typing import Any
 from pathlib import Path
@@ -10,6 +12,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
+
+warnings.filterwarnings("ignore")
 
 
 def get_docs(corpus_dir: str) -> dict:

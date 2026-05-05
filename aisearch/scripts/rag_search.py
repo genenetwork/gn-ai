@@ -3,14 +3,12 @@
 import argparse
 import asyncio
 import os
-import warnings
 
 from dotenv import load_dotenv
 from functools import partial
 
 import dspy
 import torch
-from typing import Any
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
 from gnais.search.rag import rag_search
@@ -21,10 +19,7 @@ from gnais.search.prompts import (
     GN_UPDATE_MEMORY_PROMPT,
 )
 
-warnings.filterwarnings("ignore")
-
-
-def _digest(query: str, memory: Any, user_id: str, corpus_path: str, db_path: str) -> str:
+def _digest(query: str, memory: Memory, user_id: str, corpus_path: str, db_path: str) -> str:
     """Run the full RAG pipeline for a single query and return the answer.
 
     This is a convenience wrapper around the same logic used by the CLI
@@ -48,7 +43,6 @@ def _digest(query: str, memory: Any, user_id: str, corpus_path: str, db_path: st
             retriever=retriever,
             memory=memory,
             user_id=user_id,
-            chat_history=[],
         ):
             parts.append(str(chunk))
         return "".join(parts)
@@ -102,13 +96,21 @@ if __name__ == "__main__":
 
     dspy.configure(lm=llm)
 
+    # NOTE: Find a better way of doing this
+    # This a turnaround
+    # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
+    if "moonshot" in MODEL_NAME.lower():
+        os.environ["MOONSHOT_API_KEY"]=API_KEY
+    elif "anthropic" in MODEL_NAME.lower():
+        os.environ["ANTHROPIC_API_KEY"]=API_KEY
+    
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
         llm={
             "provider": "litellm",
             "config": {
-                "model": "moonshot/kimi-k2-0711-preview",
+                "model": MODEL_NAME,
                 "temperature": 0.1,
                 "max_tokens": 2_000,
                 "api_key": API_KEY,
