@@ -257,9 +257,13 @@ class MemoryTools:
     def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 10) -> str:
         """Search for relevant memories."""
         results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id}, top_k=limit)
-        if results and results.get("results"):
-            return "\n".join([r["memory"] for r in results["results"]])
-        return ""
+        chat_history = ""
+        if results and (memories := results.get("results")):
+            for memory in memories:
+                if (query := memory.get("metadata", {}).get("query")):
+                    chat_history += f"Query: {query}\n"
+                chat_history += f"\nMemory({memory['updated_at']}): {memory['memory']}\n"
+        return chat_history.strip()
 
     def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
         """Get all memories for a user."""
