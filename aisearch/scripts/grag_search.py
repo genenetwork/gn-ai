@@ -34,7 +34,6 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=args.env_file)
 
-    CORPUS_PATH = os.getenv("CORPUS_PATH")
     DB_PATH = os.getenv("DB_PATH")
     SEED = os.getenv("SEED")
     MODEL_NAME = os.getenv("MODEL_NAME")
