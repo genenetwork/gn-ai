@@ -1,7 +1,6 @@
 import asyncio
 import functools
 import logging
-from datetime import datetime
 from typing import Any
 
 import dspy
@@ -324,9 +323,12 @@ def with_memory(memory_type: str = "interaction"):
                     feedback = str(value.get("final"))
                     if memory_tools and feedback:
                         memory_tools.store_memory(
-                            f"Time: {datetime.now().strftime("%m-%d %H:%M")}\nQuery: {query}\nAnswer: {feedback}",
+                            feedback,
                             user_id=user_id,
-                            run_id=memory_type
+                            run_id=memory_type,
+                            metadata={
+                                "query": query
+                            }
                         )
                 yield value
         return wrapper
