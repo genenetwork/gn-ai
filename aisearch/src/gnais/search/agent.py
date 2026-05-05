@@ -14,35 +14,36 @@ from gnais.search.tools import (
 
 class AgentSig(dspy.Signature):
     query: str = dspy.InputField()
+    chat_history: str = dspy.InputField()
     solution: str = dspy.OutputField(
         desc="""Return the answer as valid HTML only. Use only safe body tags such as
-<p>, <ul>, <ol>, <li>, <a>, <strong>, <em>, <code>, <pre>, and <br>.
-Do not use Markdown. Do not wrap the answer in ```html fences.
+        <p>, <ul>, <ol>, <li>, <a>, <strong>, <em>, <code>, <pre>, and <br>.
+        Do not use Markdown. Do not wrap the answer in ```html fences.
 
-Link correctness is mandatory. Every <a href="..."> URL MUST come directly
-from a SPARQL tool result returned by the configured Virtuoso endpoint.
-Never invent, infer, concatenate, normalize, rewrite, shorten, or guess URLs.
-Never create links from literals, labels, names, descriptions, IDs, QNames,
-CURIEs, blank nodes, or user text. Only bind and use URI/IRI values returned
-by SPARQL variables.
+        Link correctness is mandatory. Every <a href="..."> URL MUST come directly
+        from a SPARQL tool result returned by the configured Virtuoso endpoint.
+        Never invent, infer, concatenate, normalize, rewrite, shorten, or guess URLs.
+        Never create links from literals, labels, names, descriptions, IDs, QNames,
+        CURIEs, blank nodes, or user text. Only bind and use URI/IRI values returned
+        by SPARQL variables.
 
-Before emitting any hyperlink, verify that the href value is exactly one of
-the URI/IRI strings present in the latest relevant SPARQL result set. If no
-verified URI/IRI is available, omit the hyperlink and render plain text instead.
-Broken links are worse than no links.
+        Before emitting any hyperlink, verify that the href value is exactly one of
+        the URI/IRI strings present in the latest relevant SPARQL result set. If no
+        verified URI/IRI is available, omit the hyperlink and render plain text instead.
+        Broken links are worse than no links.
 
-When querying SPARQL, prefer fast, selective, bounded queries. Use LIMIT,
-specific predicates, VALUES, FILTERs, and focused graph patterns where possible.
-Avoid broad scans, unbounded OPTIONAL chains, SELECT *, and expensive regex
-unless strictly necessary. Retrieve only the variables needed for the answer,
-especially URI/IRI variables intended for links.
+        When querying SPARQL, prefer fast, selective, bounded queries. Use LIMIT,
+        specific predicates, VALUES, FILTERs, and focused graph patterns where possible.
+        Avoid broad scans, unbounded OPTIONAL chains, SELECT *, and expensive regex
+        unless strictly necessary. Retrieve only the variables needed for the answer,
+        especially URI/IRI variables intended for links.
 
-The final answer must include detailed reasoning where useful, followed by a
-clear final answer, but all content must remain valid HTML."""
+        The final answer must include detailed reasoning where useful, followed by a
+        clear final answer, but all content must remain valid HTML."""
     )
 
 
-def _build_stream_react(sparql_url: str, memory=None, user_id: str = "default_user"):
+def _build_stream_react(sparql_url: str):
     """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
     tools = [make_sparql_fetch_tool(sparql_url), check_link]
 
@@ -76,10 +77,11 @@ async def agent_search(
 
     Yields stream chunks and a final prediction dict.
     """
-    stream_react = _build_stream_react(sparql_url, memory=memory, user_id=user_id)
+    stream_react = _build_stream_react(sparql_url)
 
     async for value in stream_react(
-        query=f"{system_prompt}\n{query}", config={"cache": False}
+        query=f"{system_prompt}\nQuery: {query}",
+        chat_history=chat_history,
     ):
         if isinstance(value, dspy.Prediction):
             solution = getattr(value, "solution", None)
