@@ -82,11 +82,13 @@ _SEM_RETRIEVER = create_ensemble_retriever(
 
 
 async def _rag_search(query: str, user_id: str = "default_user", memory=None):
+    yield {"status": "Classifying search type…"}
     retriever = (
         _KW_RETRIEVER
         if classify_search(query).get("decision") == "keyword"
         else _SEM_RETRIEVER
     )
+    yield {"status": "Retrieving documents…"}
     async for item in rag_search(query=query, retriever=retriever, user_id=user_id, memory=memory):
         yield item
 
@@ -109,6 +111,10 @@ async def _stream_component(
             if isinstance(chunk, dict) and "final" in chunk:
                 await queue.put(
                     StreamEvent(source=source, kind="final", content=chunk["final"])
+                )
+            elif isinstance(chunk, dict) and "status" in chunk:
+                await queue.put(
+                    StreamEvent(source=source, kind="status", content=chunk["status"])
                 )
             else:
                 await queue.put(
