@@ -9,10 +9,7 @@
     <div class="message-content stream-shell"
          hx-ext="sse"
          sse-connect="{{ url_for('search_stream') }}?q={{ query|urlencode }}"
-         sse-close="stream_end"
-         _="on htmx:sseMessage from me
-               wait 10ms
-               set #chat-container.scrollTop to #chat-container.scrollHeight">
+         sse-close="stream_end">
         <div class="stream-shell-header">
             <div>
                 <div class="stream-shell-kicker">Live Research Trace</div>
@@ -81,6 +78,6 @@
             </div>
         </section>
 
-        <div hidden sse-swap="stream_end"></div>
+        <div hidden sse-swap="stream_end" hx-on:htmx:after-swap="window.onStreamEnd()"></div>
     </div>
 </div>
