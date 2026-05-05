@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 import dspy
-import requests
+import httpx
 from SPARQLWrapper import JSON, SPARQLWrapper
 
 # mem0's internal history store can spew sqlite transaction warnings;
@@ -164,6 +164,9 @@ class QueryTranslation(dspy.Signature):
 _translate_query = dspy.Predict(QueryTranslation)
 
 
+_SPARQL_CLIENT = httpx.Client()
+
+
 def sparql_fetch(query: str, sparql_uri: str) -> Any:
     schema_hint = build_schema_hint(sparql_uri)
     sparql_queries = _translate_query(
@@ -171,13 +174,16 @@ def sparql_fetch(query: str, sparql_uri: str) -> Any:
         schema_hint=schema_hint,
     ).get("translated_queries")
 
-    sparql = SPARQLWrapper(sparql_uri)
-    sparql.setReturnFormat(JSON)
     results = []
     for i, sparql_query in enumerate(sparql_queries):
         try:
-            sparql.setQuery(sparql_query)
-            result = sparql.queryAndConvert()
+            resp = _SPARQL_CLIENT.post(
+                sparql_uri,
+                data={"query": sparql_query},
+                headers={"Accept": "application/sparql-results+json"},
+            )
+            resp.raise_for_status()
+            result = resp.json()
             bindings = result.get("results", {}).get("bindings", [])
             results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
         except Exception as e:
@@ -205,14 +211,17 @@ def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     )
 
 
+_CHECK_CLIENT = httpx.Client(follow_redirects=True, timeout=10)
+
+
 def _check_link(url: str) -> str:
     """Check whether a URL is reachable.
 
     Returns a short status string suitable for feeding back to the LLM.
     """
     try:
-        response = requests.head(url, allow_redirects=True, timeout=10)
-        ok = response.ok
+        response = _CHECK_CLIENT.head(url)
+        ok = response.is_success
     except Exception:
         ok = False
 

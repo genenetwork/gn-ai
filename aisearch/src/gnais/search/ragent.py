@@ -83,9 +83,10 @@ _SEM_RETRIEVER = create_ensemble_retriever(
 
 async def _rag_search(query: str, user_id: str = "default_user", memory=None):
     yield {"status": "Classifying search type…"}
+    classification = await asyncio.to_thread(classify_search, query)
     retriever = (
         _KW_RETRIEVER
-        if classify_search(query).get("decision") == "keyword"
+        if classification.get("decision") == "keyword"
         else _SEM_RETRIEVER
     )
     yield {"status": "Retrieving documents…"}
