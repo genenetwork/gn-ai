@@ -4,8 +4,9 @@ import asyncio
 from typing import Any
 
 import dspy
-from gnais.search.prompts import RAG_SYSTEM_PROMPT
 from gnais.search.tools import with_memory
+from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
+from typing import Any
 
 
 class RAG(dspy.Signature):
@@ -36,7 +37,7 @@ _RAG_STREAM = dspy.streamify(
 async def rag_search(
     query: str,
     retriever: Any,
-    system_prompt: str = RAG_SYSTEM_PROMPT,
+    system_prompt: str = GENERAL_SYSTEM_PROMPT,
     user_id: str = "default_user",
     memory=None,
     chat_history: list = [],

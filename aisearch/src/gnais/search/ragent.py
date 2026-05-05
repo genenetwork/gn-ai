@@ -29,6 +29,7 @@ class StreamEvent(TypedDict):
 
 class Synthesis(dspy.Signature):
     """Synthesize the final response from all search components.
+    Make sure the final synthesis is in line with the query.
 
     Format your entire response as valid HTML. Use tags such as
     <p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.

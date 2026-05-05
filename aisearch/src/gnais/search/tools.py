@@ -20,7 +20,7 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
 # Ground-truth schema from Virtuoso (memoized)
 # ---------------------------------------------------------------------------
 
-@functools.lru_cache(maxsize=1)
+@functools.lru_cache(maxsize=64)
 def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
     """Fetch literal and object properties from the live Virtuoso endpoint.
 
@@ -55,7 +55,29 @@ def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
         if b.get("p")
     }
 
-    return literal_props, object_props
+    snapshot_query = """
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX owl: <http://www.w3.org/2002/07/owl#>
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        SELECT SAMPLE(?obj) AS ?o
+        WHERE {
+        ?subject skos:member ?obj .
+        BIND(skos:member AS ?predicate)
+        BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
+        FILTER (?subject != ?obj)
+        FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
+        }
+        GROUP BY ?subject ?predicate ?stem
+    """
+    sparql.setQuery(snapshot_query)
+    snapshot_result = sparql.queryAndConvert()
+    snapshot_objs = {
+        b["o"]["value"]
+        for b in snapshot_result.get("results", {}).get("bindings", [])
+        if b.get("o")
+    }
+
+    return literal_props, object_props, snapshot_objs
 
 
 # Compact namespace → prefix map for prompt output
@@ -87,47 +109,56 @@ def _uri_to_qname(uri: str) -> str:
             return f"{prefix}:{uri[len(ns):]}"
     return f"<{uri}>"
 
-
+@functools.lru_cache(maxsize=64)
 def build_schema_hint(sparql_uri: str) -> str:
     """Build a compact schema hint from the live Virtuoso endpoint."""
-    literal_props, object_props = _fetch_schema(sparql_uri)
+    literal_props, object_props, snapshot_objs = _fetch_schema(sparql_uri)
     return f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
-PREFIX dcat: <http://www.w3.org/ns/dcat#>
-PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
-PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+    PREFIX dcat: <http://www.w3.org/ns/dcat#>
+    PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
+    PREFIX dct: <http://purl.org/dc/terms/>
+    PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
+    PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
+    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 
-LITERAL PROPERTIES (object is a string/number/date):
-{" ,".join([_uri_to_qname(uri) for uri in literal_props])}
+    LITERAL PROPERTIES (object is a string/number/date):
+    {" ,".join([_uri_to_qname(uri) for uri in literal_props])}
 
 
-OBJECT PROPERTIES (object is a URI / another resource):
-{" ,".join([_uri_to_qname(uri) for uri in object_props])}
+    OBJECT PROPERTIES (object is a URI / another resource):
+    {" ,".join([_uri_to_qname(uri) for uri in object_props])}
 
-CRITICAL RULES:
-1. Only use properties listed above. Do NOT invent new ones.
-2. Literal properties give strings/numbers — use FILTER, not ?o a ...
-3. Object properties link to other resources — you can chain ?o a <Class>.
-4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
-5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
-"""
+
+    SNAPSHOT_OBJECTS (use to build targeted queries):
+    {" ,".join([_uri_to_qname(uri) for uri in snapshot_objs])}
+
+
+    CRITICAL RULES:
+    1. Only use properties listed above. Do NOT invent new ones.
+    2. Literal properties give strings/numbers — use FILTER, not ?o a ...
+    3. Object properties link to other resources — you can chain ?o a <Class>.
+    4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+    5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
+    """
 
 
 class QueryTranslation(dspy.Signature):
-    """Translate natural language to SPARQL SELECT. CRITICAL: every
-    query MUST start with the PREFIX declarations. Only use declared
-    prefixes. Use the schema hints and example patterns."""
+    """
+    Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
+    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
+    CRITICAL:
+    1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
+    2. Leverage as many schema hints as possible.
+    """
 
     original_query: str = dspy.InputField(desc="User query")
-    ontology_hints: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
-    translated_query: str = dspy.OutputField(
-        desc="Valid SPARQL SELECT query with PREFIX declarations"
+    schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
+    translated_queries: list[str] = dspy.OutputField(
+        desc="Top 10 valid SPARQL SELECT query with PREFIX declarations."
     )
 
 
@@ -136,23 +167,31 @@ _translate_query = dspy.Predict(QueryTranslation)
 
 def sparql_fetch(query: str, sparql_uri: str) -> Any:
     schema_hint = build_schema_hint(sparql_uri)
-    sparql_query = _translate_query(
+    sparql_queries = _translate_query(
         original_query=query,
-        ontology_hints=schema_hint,
-    ).get("translated_query")
+        schema_hint=schema_hint,
+    ).get("translated_queries")
 
     sparql = SPARQLWrapper(sparql_uri)
     sparql.setReturnFormat(JSON)
-    sparql.setQuery(sparql_query)
-    result = sparql.queryAndConvert()
+    results = []
+    for i, sparql_query in enumerate(sparql_queries):
+        try:
+            sparql.setQuery(sparql_query)
+            result = sparql.queryAndConvert()
+            bindings = result.get("results", {}).get("bindings", [])
+            results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+        except Exception as e:
+            results.append(
+                f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
+            )
+    return "\n\n".join(results)
 
-    return result
 
-
-@functools.lru_cache(maxsize=4)
+@functools.lru_cache(maxsize=64)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
-    def _fetch(query_str: str) -> Any:
-        return sparql_fetch(query_str, sparql_uri)
+    def _fetch(query: str) -> Any:
+        return sparql_fetch(query, sparql_uri)
 
     return dspy.Tool(
         name="fetch_data",

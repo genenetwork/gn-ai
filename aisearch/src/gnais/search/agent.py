@@ -10,6 +10,7 @@ from gnais.search.tools import (
     make_sparql_fetch_tool,
     with_memory,
 )
+from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
 
 
 class AgentSig(dspy.Signature):
