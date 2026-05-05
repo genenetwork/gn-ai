@@ -1,8 +1,9 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
+import asyncio
 import dspy
-import time
 from gnais.search.classification import extract_keywords
+from gnais.config import Config
 from gnais.search.tools import with_memory, build_schema_hint
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -18,9 +19,6 @@ def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
             result = sparql.queryAndConvert()
             bindings = result.get("results", {}).get("bindings", [])
             results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
-            # NOTE: Break communication with endpoint between queries
-            # to prevent connection closure to endpoint
-            time.sleep(5)
         except Exception as e:
             results.append(
                 f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
@@ -68,6 +66,10 @@ _GRAG_STREAM = dspy.streamify(
 )
 
 
+# Warm schema cache at import time to avoid blocking the first request
+_ = build_schema_hint(Config.SPARQL_ENDPOINT)
+
+
 @with_memory(memory_type="grag")
 async def graph_rag_search(
     query: str,
@@ -78,14 +80,15 @@ async def graph_rag_search(
     chat_history: list = [],
 ):
     yield {"status": "Extracting keywords…"}
-    keywords_pred = extract_keywords(query)
+    keywords_pred = await asyncio.to_thread(extract_keywords, query)
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
     grag_prompt = f"{system_prompt}\nQuery: {query}"
     sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}\nEssential keywords in query: {keywords}"
     yield {"status": "Generating SPARQL queries…"}
     schema_hint = build_schema_hint(sparql_url)
-    sparql_gen = _SPARQL_GEN(
+    sparql_gen = await asyncio.to_thread(
+        _SPARQL_GEN,
         original_query=sparql_prompt,
         schema_hint=schema_hint,
     )
@@ -94,7 +97,9 @@ async def graph_rag_search(
         sparql_queries = []
 
     yield {"status": "Querying knowledge graph…"}
-    sparql_results = _run_sparql_queries(sparql_url, sparql_queries)
+    sparql_results = await asyncio.to_thread(
+        _run_sparql_queries, sparql_url, sparql_queries
+    )
 
     yield {"status": "Generating response…"}
     async for value in _GRAG_STREAM(

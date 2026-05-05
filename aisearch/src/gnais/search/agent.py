@@ -43,25 +43,29 @@ class AgentSig(dspy.Signature):
     )
 
 
-def _build_stream_react(sparql_url: str):
-    """Build the streaming ReAct agent for a given SPARQL endpoint and optional memory."""
-    tools = [make_sparql_fetch_tool(sparql_url), check_link]
+_STREAM_REACT_CACHE: dict[str, Any] = {}
 
-    return dspy.streamify(
-        dspy.ReAct(
-            signature=AgentSig,
-            tools=tools,
-            max_iters=20,
-        ),
-        stream_listeners=[
-            dspy.streaming.StreamListener(
-                signature_field_name="next_thought",
-                allow_reuse=True,
+
+def _get_stream_react(sparql_url: str) -> Any:
+    """Return a cached (or freshly built) streaming ReAct agent."""
+    if sparql_url not in _STREAM_REACT_CACHE:
+        tools = [make_sparql_fetch_tool(sparql_url), check_link]
+        _STREAM_REACT_CACHE[sparql_url] = dspy.streamify(
+            dspy.ReAct(
+                signature=AgentSig,
+                tools=tools,
+                max_iters=20,
             ),
-            dspy.streaming.StreamListener(signature_field_name="solution"),
-        ],
-        include_final_prediction_in_output_stream=True,
-    )
+            stream_listeners=[
+                dspy.streaming.StreamListener(
+                    signature_field_name="next_thought",
+                    allow_reuse=True,
+                ),
+                dspy.streaming.StreamListener(signature_field_name="solution"),
+            ],
+            include_final_prediction_in_output_stream=True,
+        )
+    return _STREAM_REACT_CACHE[sparql_url]
 
 
 @with_memory(memory_type="agent")
@@ -78,7 +82,7 @@ async def agent_search(
     Yields stream chunks and a final prediction dict.
     """
     yield {"status": "Planning search strategy…"}
-    stream_react = _build_stream_react(sparql_url)
+    stream_react = _get_stream_react(sparql_url)
 
     async for value in stream_react(
         query=f"{system_prompt}\nQuery: {query}",
