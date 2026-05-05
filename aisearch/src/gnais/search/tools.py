@@ -281,7 +281,7 @@ def with_memory(memory_type: str = "interaction"):
                     feedback = str(value.get("final"))
                     if memory_tools and feedback:
                         memory_tools.store_memory(
-                            f"Time: {datetime.now()}\nQuery: {query}\nAnswer: {feedback}",
+                            f"Time: {datetime.now().strftime("%m-%d %H:%M")}\nQuery: {query}\nAnswer: {feedback}",
                             user_id=user_id,
                             run_id=memory_type
                         )
