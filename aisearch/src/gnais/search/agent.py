@@ -77,6 +77,7 @@ async def agent_search(
 
     Yields stream chunks and a final prediction dict.
     """
+    yield {"status": "Planning search strategy…"}
     stream_react = _build_stream_react(sparql_url)
 
     async for value in stream_react(
