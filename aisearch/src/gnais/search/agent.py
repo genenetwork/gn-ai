@@ -3,7 +3,6 @@
 from typing import Any
 
 import dspy
-from gnais.search.prompts import AGENT_SYSTEM_PROMPT
 from gnais.search.tools import (
     MemoryTools,
     check_link,
@@ -69,7 +68,7 @@ def _build_stream_react(sparql_url: str):
 async def agent_search(
     query: str,
     sparql_url: str,
-    system_prompt: str = AGENT_SYSTEM_PROMPT,
+    system_prompt: str = GENERAL_SYSTEM_PROMPT,
     user_id: str = "default_user",
     memory=None,
     chat_history: list = [],
