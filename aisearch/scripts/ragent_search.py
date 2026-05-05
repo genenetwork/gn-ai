@@ -1,18 +1,21 @@
 """Main module of hybrid search for GeneNetwork"""
 
-import os
 import argparse
 import asyncio
+import os
 
-from dotenv import load_dotenv
 import dspy
 import torch
-from rich.console import Console
+from dotenv import load_dotenv
+from gnais.search.prompts import GN_FACT_EXTRACTION_PROMPT, GN_UPDATE_MEMORY_PROMPT
+from gnais.search.ragent import hybrid_search
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
 from rich.columns import Columns
+from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
-from gnais.search.ragent import hybrid_search
 
 
 class _HybridDisplay:
@@ -72,14 +75,14 @@ class _HybridDisplay:
         self._live.update(self._render())
 
 
-def digest(query: str):
+def digest(query: str, user_id: str, memory: Memory = None):
     async def _run():
         display = _HybridDisplay()
         display.start()
 
         final_html = None
         try:
-            async for event in hybrid_search(query):
+            async for event in hybrid_search(query, user_id=user_id, memory=memory):
                 source = event["source"]
                 kind = event["kind"]
                 content = event["content"]
@@ -115,17 +118,20 @@ def digest(query: str):
             console.print("[bold red]No final synthesis received.[/bold red]")
         console.print()
         return final_html
+
     return asyncio.run(_run())
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", default=".env", help="Path to .env file")
+    parser.add_argument("--user-id", default="test-user", help="Mem0 user identity")
     parser.add_argument("query", help="Search query")
     args = parser.parse_args()
 
     load_dotenv(dotenv_path=args.env_file)
 
+    DB_PATH = os.getenv("DB_PATH")
     SEED = os.getenv("SEED")
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = os.getenv("MODEL_TYPE")
@@ -161,4 +167,45 @@ if __name__ == "__main__":
 
     dspy.configure(lm=llm)
 
-    digest(args.query)
+    # NOTE: Find a better way of doing this
+    # This a turnaround
+    # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
+    if "moonshot" in MODEL_NAME.lower():
+        os.environ["MOONSHOT_API_KEY"] = API_KEY
+    elif "anthropic" in MODEL_NAME.lower():
+        os.environ["ANTHROPIC_API_KEY"] = API_KEY
+
+    memory_config = MemoryConfig(
+        custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+        custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
+        llm={
+            "provider": "litellm",
+            "config": {
+                "model": MODEL_NAME,
+                "temperature": 0.1,
+                "max_tokens": 2_000,
+                "api_key": API_KEY,
+            },
+        },
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
+            },
+        },
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "path": os.path.join(DB_PATH, "mem0_chroma"),
+            },
+        },
+    )
+    memory = Memory(config=memory_config)
+
+    digest(args.query, args.user_id, memory=memory)
