@@ -186,6 +186,13 @@ async def search_stream():
                 kind = event["kind"]
                 content = event["content"]
 
+                if source in {"rag", "grag", "agent"} and kind == "status":
+                    yield _format_sse(
+                        f"{source}_chunk",
+                        f"<div class='stream-status-msg'>{escape(content)}</div>",
+                    )
+                    continue
+
                 if source in {"rag", "grag", "agent"} and kind == "chunk":
                     yield _format_sse(
                         f"{source}_chunk",

@@ -77,11 +77,13 @@ async def graph_rag_search(
     user_id: str = "default_user",
     chat_history: list = [],
 ):
+    yield {"status": "Extracting keywords…"}
     keywords_pred = extract_keywords(query)
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
     grag_prompt = f"{system_prompt}\nQuery: {query}"
     sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}\nEssential keywords in query: {keywords}"
+    yield {"status": "Generating SPARQL queries…"}
     schema_hint = build_schema_hint(sparql_url)
     sparql_gen = _SPARQL_GEN(
         original_query=sparql_prompt,
@@ -91,8 +93,10 @@ async def graph_rag_search(
     if sparql_queries is None:
         sparql_queries = []
 
+    yield {"status": "Querying knowledge graph…"}
     sparql_results = _run_sparql_queries(sparql_url, sparql_queries)
 
+    yield {"status": "Generating response…"}
     async for value in _GRAG_STREAM(
         original_query=grag_prompt,
         sparql_results=sparql_results,
