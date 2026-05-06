@@ -1,10 +1,10 @@
 import asyncio
+import concurrent.futures
 import functools
 import logging
-from typing import Any
-import time
 import random
-from urllib.error import HTTPError
+from typing import Any
+
 import dspy
 import httpx
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -166,48 +166,70 @@ class QueryTranslation(dspy.Signature):
 _translate_query = dspy.Predict(QueryTranslation)
 
 
-_SPARQL_CLIENT = httpx.Client()
-
-
-def sparql_fetch(sparql_queries: str, sparql_uri: str, max_retries: int = 3, base_delay: float = 0.5) -> Any:
-    results = []
-    for i, sparql_query in enumerate(sparql_queries):
+async def _run_single_sparql(
+    client: httpx.AsyncClient,
+    sparql_uri: str,
+    sparql_query: str,
+    query_index: int,
+    max_retries: int = 3,
+    base_delay: float = 0.5,
+) -> str:
+    for attempt in range(max_retries):
         try:
-            for attempt in range(max_retries):
-                try:
-                    resp = _SPARQL_CLIENT.post(
-                        sparql_uri,
-                        data={"query": sparql_query},
-                        headers={"Accept": "application/sparql-results+json"},
-                    )
-                    resp.raise_for_status()
-                    result = resp.json()
-                    bindings = result.get("results", {}).get("bindings", [])
-                    results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
-                    break
-                except HTTPError as e:
-                    if e.code == 504 and attempt < max_retries - 1:
-                        # Exponential back-off with jitter
-                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                        results.append(f"Timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s...")
-                        time.sleep(delay)
-                    else:
-                        raise
-        except Exception as e:
-            results.append(
-                f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
+            resp = await client.post(
+                sparql_uri,
+                data={"query": sparql_query},
+                headers={"Accept": "application/sparql-results+json"},
             )
+            resp.raise_for_status()
+            result = resp.json()
+            bindings = result.get("results", {}).get("bindings", [])
+            return f"Query {query_index} succeeded ({len(bindings)} rows): {bindings}"
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 504 and attempt < max_retries - 1:
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                await asyncio.sleep(delay)
+                continue
+            return f"Query {query_index} failed: {e}\nQuery was:\n{sparql_query}"
+        except Exception as e:
+            return f"Query {query_index} failed: {e}\nQuery was:\n{sparql_query}"
+    return f"Query {query_index} failed after {max_retries} retries.\nQuery was:\n{sparql_query}"
+
+
+async def sparql_fetch(
+    sparql_queries: list[str],
+    sparql_uri: str,
+    max_retries: int = 3,
+    base_delay: float = 0.5,
+) -> str:
+    """Execute *sparql_queries* concurrently against *sparql_uri*."""
+    if not sparql_queries:
+        return "No SPARQL queries to run."
+    tasks = [
+        _run_single_sparql(httpx.AsyncClient(timeout=3600), sparql_uri, query, i, max_retries, base_delay)
+        for i, query in enumerate(sparql_queries)
+    ]
+    results = await asyncio.gather(*tasks)
     return "\n\n".join(results)
 
 
 @functools.lru_cache(maxsize=64)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query: str) -> Any:
-        sparql_queries = _translate_query(
-        original_query=query,
-        schema_hint=build_schema_hint(sparql_uri),
-    ).get("translated_queries")
-        return sparql_fetch(sparql_queries, sparql_uri)
+        schema_hint = build_schema_hint(sparql_uri)
+        pred = _translate_query(
+            original_query=query,
+            schema_hint=schema_hint,
+        )
+        sparql_queries = pred.get("translated_queries") if pred else []
+        if not sparql_queries:
+            return "No SPARQL queries generated."
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                asyncio.run,
+                sparql_fetch(sparql_queries, sparql_uri)
+            )
+            return future.result()
 
     return dspy.Tool(
         name="fetch_data",
