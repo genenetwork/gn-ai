@@ -1,3 +1,5 @@
+import asyncio
+import concurrent.futures
 import os
 import uuid
 import quart_flask_patch  # noqa: F401
@@ -61,6 +63,13 @@ if not app.config.get("MODEL_TYPE"):
 
 
 dspy.configure(lm=dspy.LM(**LLM_CONFIG))
+
+
+@app.before_serving
+async def _set_default_executor():
+    loop = asyncio.get_running_loop()
+    loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
+
 
 #  Shared mem0 memory instance (loaded once at server startup)
 _MEMORY = Memory(config=MemoryConfig(
