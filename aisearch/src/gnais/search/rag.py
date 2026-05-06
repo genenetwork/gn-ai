@@ -14,7 +14,7 @@ class RAG(dspy.Signature):
     chat_history: list = dspy.InputField(desc="History of conversation")
     context: list = dspy.InputField(desc="Background information")
     feedback: str = dspy.OutputField(
-        desc="""System response to the query — answer ONLY from the context provided.
+        desc="""System response to the query — answer ONLY from the context and chat history provided.
 HTML answer. Link rules:
 - ONLY use <a href> for full web URLs that literally appear in the context.
 - NEVER invent RDF/IRI links (e.g., gn:BXD, http://rdf.genenetwork.org/v1/id/BXD).
