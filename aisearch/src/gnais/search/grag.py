@@ -115,7 +115,7 @@ async def graph_rag_search(
         sparql_fetch, sparql_queries, sparql_url
     )
 
-    yield {"status": "Generating response…"}
+    yield {"status": "Streaming response…"}
     async for value in _GRAG_STREAM(
         original_query=grag_prompt,
         sparql_results=sparql_results,
