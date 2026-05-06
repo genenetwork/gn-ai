@@ -23,7 +23,10 @@ async def _exec_sparql(
     base_delay: float = 2,
 ) -> dict:
     """Execute a single SPARQL query with retry + exponential jitter via httpx."""
-    client = httpx.AsyncClient(timeout=5000)
+    client = httpx.AsyncClient(
+        httpx.Timeout(60.0, connect=5.0),
+        limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+    )
     for attempt in range(max_retries):
         try:
             resp = await client.post(
