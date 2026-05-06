@@ -93,11 +93,8 @@ _SEM_RETRIEVER = create_ensemble_retriever(
 async def _rag_search(query: str, user_id: str = "default_user", memory=None):
     yield {"status": "Classifying search type…"}
     loop = asyncio.get_running_loop()
-    classification = await asyncio.wait_for(
-        loop.run_in_executor(
-            tools.LLM_EXECUTOR, classify_search, query
-        ),
-        timeout=60.0,
+    classification = await loop.run_in_executor(
+        tools.LLM_EXECUTOR, classify_search, query
     )
     yield {"status": f"Search type is: '{classification.get('decision')}'"}
     retriever = (
