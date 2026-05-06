@@ -150,25 +150,22 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     followed by a final synthesis event with ``source="hybrid"``.
     """
     queue: asyncio.Queue = asyncio.Queue()
-    tasks = [
-        asyncio.create_task(_stream_component("rag", _rag_search, queue, query=query, user_id=user_id, memory=memory)),
-        asyncio.create_task(_stream_component("grag", _grag_search, queue, query=query, user_id=user_id, memory=memory)),
-        asyncio.create_task(_stream_component("agent", _agent_search, queue, query=query, user_id=user_id, memory=memory)),
-    ]
-
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
-    remaining = len(tasks)
 
-    while remaining:
-        event = await queue.get()
-        yield event
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(_stream_component("rag", _rag_search, queue, query=query, user_id=user_id, memory=memory))
+        tg.create_task(_stream_component("grag", _grag_search, queue, query=query, user_id=user_id, memory=memory))
+        tg.create_task(_stream_component("agent", _agent_search, queue, query=query, user_id=user_id, memory=memory))
 
-        if event["kind"] == "final":
-            combined_outputs[event["source"]] = event["content"]
-        elif event["kind"] == "done":
-            remaining -= 1
+        remaining = 3
+        while remaining:
+            event = await queue.get()
+            yield event
 
-    await asyncio.gather(*tasks)
+            if event["kind"] == "final":
+                combined_outputs[event["source"]] = event["content"]
+            elif event["kind"] == "done":
+                remaining -= 1
 
     messages = [
         query,
