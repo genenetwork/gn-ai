@@ -8,6 +8,9 @@ from typing import Any
 
 import dspy
 import httpx
+import redis
+
+_redis = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
 # Dedicated thread pool for LLM inference so heavy model calls don't
 # saturate the default asyncio executor used for lighter I/O work.
@@ -140,11 +143,18 @@ def _uri_to_qname(uri: str) -> str:
             return f"{prefix}:{uri[len(ns):]}"
     return f"<{uri}>"
 
-@functools.lru_cache(maxsize=64)
 def build_schema_hint(sparql_uri: str) -> str:
-    """Build a compact schema hint from the live Virtuoso endpoint."""
+    """Build a compact schema hint from the live Virtuoso endpoint.
+
+    Cached in Redis for 1 week so multiple workers / restarts share it.
+    """
+    cache_key = f"gn:schema_hint:{sparql_uri}"
+    cached = _redis.get(cache_key)
+    if cached:
+        return cached
+
     literal_props, object_props, snapshot_objs = _fetch_schema(sparql_uri)
-    return f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
+    hint = f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
 PREFIX dcat: <http://www.w3.org/ns/dcat#>
 PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
 PREFIX dct: <http://purl.org/dc/terms/>
@@ -175,6 +185,8 @@ CRITICAL RULES:
 4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
 5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
     """
+    _redis.setex(cache_key, 604800, hint)  # 1 week
+    return hint
 
 
 class QueryTranslation(dspy.Signature):
