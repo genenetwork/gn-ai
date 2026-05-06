@@ -2,7 +2,9 @@ import asyncio
 import functools
 import logging
 from typing import Any
-
+import time
+import random
+from urllib.error import HTTPError
 import dspy
 import httpx
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -167,25 +169,30 @@ _translate_query = dspy.Predict(QueryTranslation)
 _SPARQL_CLIENT = httpx.Client()
 
 
-def sparql_fetch(query: str, sparql_uri: str) -> Any:
-    schema_hint = build_schema_hint(sparql_uri)
-    sparql_queries = _translate_query(
-        original_query=query,
-        schema_hint=schema_hint,
-    ).get("translated_queries")
-
+def sparql_fetch(sparql_queries: str, sparql_uri: str, max_retries: int = 3, base_delay: float = 0.5) -> Any:
     results = []
     for i, sparql_query in enumerate(sparql_queries):
         try:
-            resp = _SPARQL_CLIENT.post(
-                sparql_uri,
-                data={"query": sparql_query},
-                headers={"Accept": "application/sparql-results+json"},
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            bindings = result.get("results", {}).get("bindings", [])
-            results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+            for attempt in range(max_retries):
+                try:
+                    resp = _SPARQL_CLIENT.post(
+                        sparql_uri,
+                        data={"query": sparql_query},
+                        headers={"Accept": "application/sparql-results+json"},
+                    )
+                    resp.raise_for_status()
+                    result = resp.json()
+                    bindings = result.get("results", {}).get("bindings", [])
+                    results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
+                    break
+                except HTTPError as e:
+                    if e.code == 504 and attempt < max_retries - 1:
+                        # Exponential back-off with jitter
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        results.append(f"Timeout (attempt {attempt + 1}/{max_retries}), retrying in {delay:.1f}s...")
+                        time.sleep(delay)
+                    else:
+                        raise
         except Exception as e:
             results.append(
                 f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
@@ -196,7 +203,11 @@ def sparql_fetch(query: str, sparql_uri: str) -> Any:
 @functools.lru_cache(maxsize=64)
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query: str) -> Any:
-        return sparql_fetch(query, sparql_uri)
+        sparql_queries = _translate_query(
+        original_query=query,
+        schema_hint=build_schema_hint(sparql_uri),
+    ).get("translated_queries")
+        return sparql_fetch(sparql_queries, sparql_uri)
 
     return dspy.Tool(
         name="fetch_data",
