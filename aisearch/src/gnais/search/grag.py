@@ -89,9 +89,8 @@ async def graph_rag_search(
 ):
     yield {"status": "Extracting keywords…"}
     loop = asyncio.get_running_loop()
-    keywords_pred = await asyncio.wait_for(
-        loop.run_in_executor(tools.LLM_EXECUTOR, extract_keywords, query),
-        timeout=60.0,
+    keywords_pred = await loop.run_in_executor(
+        tools.LLM_EXECUTOR, extract_keywords, query
     )
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
@@ -100,16 +99,13 @@ async def graph_rag_search(
     yield {"status": f"Extracted essential keywords: {keywords}"}
     schema_hint = build_schema_hint(sparql_url)
     yield {"status": f"Generating sparql queries…"}
-    sparql_gen = await asyncio.wait_for(
-        loop.run_in_executor(
-            tools.LLM_EXECUTOR,
-            functools.partial(
-                _SPARQL_GEN,
-                original_query=sparql_prompt,
-                schema_hint=schema_hint,
-            ),
+    sparql_gen = await loop.run_in_executor(
+        tools.LLM_EXECUTOR,
+        functools.partial(
+            _SPARQL_GEN,
+            original_query=sparql_prompt,
+            schema_hint=schema_hint,
         ),
-        timeout=120.0,
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
     if sparql_queries is None:
