@@ -58,8 +58,8 @@ def _cached_bm25_retriever(docs_tuple: tuple, k: int):
     )
 
 
-def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size: int = 64):
-    if not Path(path).exists():
+def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size: int = 1024):
+    if not Path(chroma_db_path).exists():
         raise FileNotFoundError("corpus_path is not a valid path")
     db = Chroma(
         persist_directory=chroma_db_path,
