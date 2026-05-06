@@ -76,8 +76,6 @@ _GRAG_STREAM = dspy.streamify(
 )
 
 
-
-
 @with_memory(memory_type="grag")
 async def graph_rag_search(
     query: str,
@@ -88,7 +86,9 @@ async def graph_rag_search(
     chat_history: list = [],
 ):
     yield {"status": "Extracting keywords…"}
-    keywords_pred = await asyncio.to_thread(extract_keywords, query)
+    keywords_pred = await asyncio.wait_for(
+        asyncio.to_thread(extract_keywords, query), timeout=6000
+    )
     keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
 
     grag_prompt = f"{system_prompt}\nQuery: {query}"
@@ -96,10 +96,13 @@ async def graph_rag_search(
     yield {"status": f"Extracted essential keywords: {keywords}"}
     schema_hint = build_schema_hint(sparql_url)
     yield {"status": f"Generating sparql queries…"}
-    sparql_gen = await asyncio.to_thread(
-        _SPARQL_GEN,
-        original_query=sparql_prompt,
-        schema_hint=schema_hint,
+    sparql_gen = await asyncio.wait_for(
+        asyncio.to_thread(
+            _SPARQL_GEN,
+            original_query=sparql_prompt,
+            schema_hint=schema_hint,
+        ),
+        timeout=6000,
     )
     sparql_queries = getattr(sparql_gen, "sparql_queries", [])
     if sparql_queries is None:
