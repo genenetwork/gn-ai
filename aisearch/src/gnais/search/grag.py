@@ -4,26 +4,9 @@ import asyncio
 import dspy
 from gnais.search.classification import extract_keywords
 from gnais.config import Config
-from gnais.search.tools import with_memory, build_schema_hint
+from gnais.search.tools import with_memory, build_schema_hint, sparql_fetch
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 from SPARQLWrapper import JSON, SPARQLWrapper
-
-
-def _run_sparql_queries(sparql_url: str, sparql_queries: list[str]) -> str:
-    sparql = SPARQLWrapper(sparql_url)
-    sparql.setReturnFormat(JSON)
-    results = []
-    for i, sparql_query in enumerate(sparql_queries):
-        try:
-            sparql.setQuery(sparql_query)
-            result = sparql.queryAndConvert()
-            bindings = result.get("results", {}).get("bindings", [])
-            results.append(f"Query {i} succeeded ({len(bindings)} rows): {bindings}")
-        except Exception as e:
-            results.append(
-                f"Query {i} failed: {e}\nQuery was:\n{sparql_query}"
-            )
-    return "\n\n".join(results)
 
 
 class SPARQLGenerator(dspy.Signature):
@@ -98,7 +81,7 @@ async def graph_rag_search(
 
     yield {"status": "Querying knowledge graph…"}
     sparql_results = await asyncio.to_thread(
-        _run_sparql_queries, sparql_url, sparql_queries
+        sparql_fetch, sparql_queries, sparql_url
     )
 
     yield {"status": "Generating response…"}
