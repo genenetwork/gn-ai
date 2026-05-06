@@ -18,6 +18,7 @@ from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.classification import classify_search
 from gnais.search.corpus import get_docs, get_chroma_db, create_ensemble_retriever
+from gnais.search import tools
 
 
 class StreamEvent(TypedDict):
@@ -91,8 +92,12 @@ _SEM_RETRIEVER = create_ensemble_retriever(
 
 async def _rag_search(query: str, user_id: str = "default_user", memory=None):
     yield {"status": "Classifying search type…"}
+    loop = asyncio.get_running_loop()
     classification = await asyncio.wait_for(
-        asyncio.to_thread(classify_search, query), timeout=6000
+        loop.run_in_executor(
+            tools.LLM_EXECUTOR, classify_search, query
+        ),
+        timeout=60.0,
     )
     yield {"status": f"Search type is: '{classification.get('decision')}'"}
     retriever = (
