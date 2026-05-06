@@ -12,7 +12,7 @@ import httpx
 # Dedicated thread pool for LLM inference so heavy model calls don't
 # saturate the default asyncio executor used for lighter I/O work.
 LLM_EXECUTOR = concurrent.futures.ThreadPoolExecutor(
-    max_workers=8, thread_name_prefix="llm-worker"
+    max_workers=os.cpu_count() // 2, thread_name_prefix="llm-worker"
 )
 
 # mem0's internal history store can spew sqlite transaction warnings;
