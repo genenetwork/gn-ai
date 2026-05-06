@@ -7,7 +7,6 @@ from typing import Any
 
 import dspy
 import httpx
-from SPARQLWrapper import JSON, SPARQLWrapper
 
 # mem0's internal history store can spew sqlite transaction warnings;
 # suppress them so they don't clutter CLI output.
@@ -17,66 +16,85 @@ for _mem0_logger in ("mem0", "mem0.memory", "mem0.memory.main"):
     )
 
 
-# ---------------------------------------------------------------------------
-# Ground-truth schema from Virtuoso (memoized)
-# ---------------------------------------------------------------------------
+async def _exec_sparql(
+    sparql_uri: str,
+    query: str,
+    max_retries: int = 3,
+    base_delay: float = 2,
+) -> dict:
+    """Execute a single SPARQL query with retry + exponential jitter via httpx."""
+    client = httpx.AsyncClient(timeout=5000)
+    for attempt in range(max_retries):
+        try:
+            resp = await client.post(
+                sparql_uri,
+                data={"query": query},
+                headers={"Accept": "application/sparql-results+json"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (504, 503, 502) and attempt < max_retries - 1:
+                await asyncio.sleep(base_delay * (2 ** attempt) + random.uniform(0, 1))
+                continue
+            raise
+    return {}
+
 
 @functools.lru_cache(maxsize=64)
-def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str]]:
+def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str], set[str]]:
     """Fetch literal and object properties from the live Virtuoso endpoint.
 
-    Returns (literal_props, object_props) where each is a set of full URIs.
+    Returns (literal_props, object_props, snapshot_objs).
+    The three queries run concurrently in a thread pool.
     """
-    sparql = SPARQLWrapper(sparql_uri)
-    sparql.setReturnFormat(JSON)
-
-    literal_query = """
-        SELECT DISTINCT ?p
-        FROM <http://rdf.genenetwork.org/v1>
-        WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
-    """
-    sparql.setQuery(literal_query)
-    lit_result = sparql.queryAndConvert()
-    literal_props = {
-        b["p"]["value"]
-        for b in lit_result.get("results", {}).get("bindings", [])
-        if b.get("p")
-    }
-
-    object_query = """
-        SELECT DISTINCT ?p
-        FROM <http://rdf.genenetwork.org/v1>
-        WHERE { ?s ?p ?o . FILTER isIRI(?o) }
-    """
-    sparql.setQuery(object_query)
-    obj_result = sparql.queryAndConvert()
-    object_props = {
-        b["p"]["value"]
-        for b in obj_result.get("results", {}).get("bindings", [])
-        if b.get("p")
-    }
-
-    snapshot_query = """
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX owl: <http://www.w3.org/2002/07/owl#>
-        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-        SELECT SAMPLE(?obj) AS ?o
-        WHERE {
-        ?subject skos:member ?obj .
-        BIND(skos:member AS ?predicate)
-        BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
-        FILTER (?subject != ?obj)
-        FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
+    def _bindings(result: dict, var: str) -> set[str]:
+        return {
+            b[var]["value"]
+            for b in result.get("results", {}).get("bindings", [])
+            if b.get(var)
         }
-        GROUP BY ?subject ?predicate ?stem
-    """
-    sparql.setQuery(snapshot_query)
-    snapshot_result = sparql.queryAndConvert()
-    snapshot_objs = {
-        b["o"]["value"]
-        for b in snapshot_result.get("results", {}).get("bindings", [])
-        if b.get("o")
+    queries = {
+        "literal": """
+            SELECT DISTINCT ?p
+            FROM <http://rdf.genenetwork.org/v1>
+            WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
+        """,
+        "object": """
+            SELECT DISTINCT ?p
+            FROM <http://rdf.genenetwork.org/v1>
+            WHERE { ?s ?p ?o . FILTER isIRI(?o) }
+        """,
+        "snapshot": """
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX owl: <http://www.w3.org/2002/07/owl#>
+            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+            SELECT SAMPLE(?obj) AS ?o
+            WHERE {
+            ?subject skos:member ?obj .
+            BIND(skos:member AS ?predicate)
+            BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
+            FILTER (?subject != ?obj)
+            FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
+            }
+            GROUP BY ?subject ?predicate ?stem
+        """,
     }
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(queries)) as executor:
+        futures = {
+            name: executor.submit(
+                lambda uri, query: asyncio.run(_exec_sparql(uri, query)),
+                sparql_uri,
+                query,
+            )
+            for name, query in queries.items()
+        }
+        results = {name: fut.result() for name, fut in futures.items()}
+
+    literal_props = _bindings(results["literal"], "p")
+    object_props = _bindings(results["object"], "p")
+    snapshot_objs = _bindings(results["snapshot"], "o")
 
     return literal_props, object_props, snapshot_objs
 
@@ -115,35 +133,35 @@ def build_schema_hint(sparql_uri: str) -> str:
     """Build a compact schema hint from the live Virtuoso endpoint."""
     literal_props, object_props, snapshot_objs = _fetch_schema(sparql_uri)
     return f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
-    PREFIX dcat: <http://www.w3.org/ns/dcat#>
-    PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
-    PREFIX dct: <http://purl.org/dc/terms/>
-    PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
-    PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
-    PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-    PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-    PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-    PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+PREFIX dcat: <http://www.w3.org/ns/dcat#>
+PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
+PREFIX dct: <http://purl.org/dc/terms/>
+PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
+PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 
-    LITERAL PROPERTIES (object is a string/number/date):
-    {" ,".join([_uri_to_qname(uri) for uri in literal_props])}
+LITERAL PROPERTIES (object is a string/number/date):
+{" ,".join([_uri_to_qname(uri) for uri in literal_props])}
 
 
-    OBJECT PROPERTIES (object is a URI / another resource):
-    {" ,".join([_uri_to_qname(uri) for uri in object_props])}
+OBJECT PROPERTIES (object is a URI / another resource):
+{" ,".join([_uri_to_qname(uri) for uri in object_props])}
 
 
-    SNAPSHOT_OBJECTS (use to build targeted queries):
-    {" ,".join([_uri_to_qname(uri) for uri in snapshot_objs])}
+SNAPSHOT_OBJECTS (use to build targeted queries):
+{" ,".join([_uri_to_qname(uri) for uri in snapshot_objs])}
 
 
-    CRITICAL RULES:
-    1. Only use properties listed above. Do NOT invent new ones.
-    2. Literal properties give strings/numbers — use FILTER, not ?o a ...
-    3. Object properties link to other resources — you can chain ?o a <Class>.
-    4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
-    5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
+CRITICAL RULES:
+1. Only use properties listed above. Do NOT invent new ones.
+2. Literal properties give strings/numbers — use FILTER, not ?o a ...
+3. Object properties link to other resources — you can chain ?o a <Class>.
+4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+5. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
     """
 
 
@@ -181,36 +199,6 @@ CRITICAL PERFORMANCE RULES (to prevent 504s):
 _translate_query = dspy.Predict(QueryTranslation)
 
 
-async def _run_single_sparql(
-    client: httpx.AsyncClient,
-    sparql_uri: str,
-    sparql_query: str,
-    query_index: int,
-    max_retries: int = 3,
-    base_delay: float = 0.5,
-) -> str:
-    for attempt in range(max_retries):
-        try:
-            resp = await client.post(
-                sparql_uri,
-                data={"query": sparql_query},
-                headers={"Accept": "application/sparql-results+json"},
-            )
-            resp.raise_for_status()
-            result = resp.json()
-            bindings = result.get("results", {}).get("bindings", [])
-            return f"Query {query_index} succeeded ({len(bindings)} rows): {bindings}"
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 504 and attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                await asyncio.sleep(delay)
-                continue
-            return f"Query {query_index} failed: {e}\nQuery was:\n{sparql_query}"
-        except Exception as e:
-            return f"Query {query_index} failed: {e}\nQuery was:\n{sparql_query}"
-    return f"Query {query_index} failed after {max_retries} retries.\nQuery was:\n{sparql_query}"
-
-
 async def sparql_fetch(
     sparql_queries: list[str],
     sparql_uri: str,
@@ -220,10 +208,16 @@ async def sparql_fetch(
     """Execute *sparql_queries* concurrently against *sparql_uri*."""
     if not sparql_queries:
         return "No SPARQL queries to run."
-    tasks = [
-        _run_single_sparql(httpx.AsyncClient(timeout=3600), sparql_uri, query, i, max_retries, base_delay)
-        for i, query in enumerate(sparql_queries)
-    ]
+
+    async def _fetch_one(query: str, idx: int) -> str:
+        try:
+            result = await _exec_sparql(sparql_uri, query, max_retries, base_delay)
+            bindings = result.get("results", {}).get("bindings", [])
+            return f"Query {idx} succeeded ({len(bindings)} rows): {bindings}"
+        except Exception as e:
+            return f"Query {idx} failed: {e}\nQuery was:\n{query}"
+
+    tasks = [_fetch_one(q, i) for i, q in enumerate(sparql_queries)]
     results = await asyncio.gather(*tasks)
     return "\n\n".join(results)
 
@@ -259,16 +253,13 @@ def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     )
 
 
-_CHECK_CLIENT = httpx.Client(follow_redirects=True, timeout=10)
-
-
 def _check_link(url: str) -> str:
     """Check whether a URL is reachable.
 
     Returns a short status string suitable for feeding back to the LLM.
     """
     try:
-        response = _CHECK_CLIENT.head(url)
+        response = httpx.Client(follow_redirects=True, timeout=10).head(url)
         ok = response.is_success
     except Exception:
         ok = False
@@ -287,12 +278,6 @@ check_link = dspy.Tool(
     },
     func=_check_link,
 )
-
-
-# ---------------------------------------------------------------------------
-# mem0 / memory tools (unchanged)
-# ---------------------------------------------------------------------------
-
 
 # KLUDGE: For now this is lifted from:
 # <https://dspy.ai/tutorials/mem0_react_agent/>
