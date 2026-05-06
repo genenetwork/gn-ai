@@ -78,7 +78,8 @@ _synthesize = dspy.streamify(
 # create them at module time once.  XXXX: Find a better way to remove
 # these globals!
 _CHROMA_DB = get_chroma_db(
-    chroma_db_path=Config.DB_PATH,
+    chroma_host="localhost",
+    chroma_port=8000,
     embed_model="Qwen/Qwen3-Embedding-0.6B",
 )
 _DOCS = get_docs(Config.CORPUS_PATH)

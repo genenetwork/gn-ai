@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 from tqdm import tqdm
-from chromadb.config import Settings
+import chromadb
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_classic.retrievers import EnsembleRetriever
@@ -59,41 +59,41 @@ def _cached_bm25_retriever(docs_tuple: tuple, k: int):
     )
 
 
-def init_chroma_db(docs: list, embed_model: Any, chroma_db_path: str, chunk_size: int = 1024):
-    if not Path(chroma_db_path).exists():
-        raise FileNotFoundError("corpus_path is not a valid path")
+def init_chroma_db(
+    docs: list,
+    embed_model: Any,
+    chroma_host: str = "localhost",
+    chroma_port: int = 8000,
+    chunk_size: int = 1024,
+):
+    client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
     db = Chroma(
-        persist_directory=chroma_db_path,
+        client=client,
         embedding_function=get_embed_model(embed_model),
-        client_settings=Settings(
-            is_persistent=True,
-            persist_directory=chroma_db_path,
-            anonymized_telemetry=False,
-        ),
     )
     for i in tqdm(range(0, len(docs), chunk_size)):
         chunk = docs[i : i + chunk_size]
         metadatas = [
             {"source": f"Document {ind + 1}"}
-                    for ind in range(i, i + len(chunk))
+            for ind in range(i, i + len(chunk))
         ]
         db.add_texts(
             texts=chunk,
             metadatas=metadatas,
         )
-    db.persist()
+    # No db.persist() needed — the server handles persistence
     return db
 
 
-def get_chroma_db(chroma_db_path: str, embed_model=Any):
+def get_chroma_db(
+    chroma_host: str = "localhost",
+    chroma_port: int = 8000,
+    embed_model: Any = None,
+):
+    client = chromadb.HttpClient(host=chroma_host, port=chroma_port)
     return Chroma(
-        persist_directory=chroma_db_path,
+        client=client,
         embedding_function=get_embed_model(embed_model),
-        client_settings=Settings(
-            is_persistent=True,
-            persist_directory=chroma_db_path,
-            anonymized_telemetry=False,
-        ),
     )
 
 
