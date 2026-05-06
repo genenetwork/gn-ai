@@ -43,7 +43,7 @@ async def rag_search(
     chat_history: list = [],
 ):
     prompt = f"{system_prompt}\nQuery: {query}"
-
+    yield {"status": "Fetching context…"}
     context = await asyncio.to_thread(retriever.invoke, query)
 
     async for value in _RAG_STREAM(
