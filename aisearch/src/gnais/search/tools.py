@@ -148,13 +148,28 @@ def build_schema_hint(sparql_uri: str) -> str:
 
 
 class QueryTranslation(dspy.Signature):
-    """
-    Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
-    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
-    CRITICAL:
-    1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
-    2. Leverage as many schema hints as possible.
-    """
+    """Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
+Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
+CRITICAL:
+1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
+2. Leverage as many schema hints as possible.
+
+When querying SPARQL, prefer fast, efficient SPARQL SELECT queries
+that avoid Virtuoso timeouts (504 errors).
+
+CRITICAL PERFORMANCE RULES (to prevent 504s):
+1. Always add `LIMIT` - start with `LIMIT 50`, increase only if needed. Never omit `LIMIT`.
+2. Never use `SELECT *` - list only the variables you actually need.
+3. Avoid expensive operations: no Cartesian products, no cross joins, no full graph scans.
+4. Use specific FILTER patterns that leverage indexes:
+   - Prefer `STRSTARTS(?label, "prefix")` over `CONTAINS` or regex.
+   - Avoid `FILTER regex(...)` - it disables indexes.
+   - Use `FILTER(?value = "exact")` or `IN` with small lists.
+5. Prefer property paths over multiple joins when traversing a chain.
+6. Use VALUES blocks for small sets of constants instead of UNION or OPTIONAL.
+7. Avoid ORDER BY on large result sets - if needed, combine with `LIMIT` and a narrow `WHERE` clause.
+8. Never use nested subqueries unless absolutely necessary; flatten them.
+9. Use `OPTIONAL` only for truly optional patterns – otherwise, use a simple triple pattern."""
 
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
