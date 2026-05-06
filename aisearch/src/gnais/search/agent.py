@@ -77,7 +77,7 @@ async def agent_search(
     """
     yield {"status": "Planning search strategy…"}
     stream_react = _get_stream_react(sparql_url)
-
+    yield {"status": "Streaming response…"}
     async for value in stream_react(
         query=f"{system_prompt}\nQuery: {query}",
         chat_history=chat_history,
