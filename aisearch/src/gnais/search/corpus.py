@@ -44,6 +44,7 @@ def get_embed_model(model_name: str):
     return HuggingFaceEmbeddings(
         model_name=model_name,
         model_kwargs={"trust_remote_code": True, "device": device},
+        encode_kwargs={"batch_size": 64}
     )
 
 
