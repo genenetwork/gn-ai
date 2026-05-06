@@ -29,24 +29,32 @@ class StreamEvent(TypedDict):
 
 class Synthesis(dspy.Signature):
     """Synthesize the final response from all search components.
-    Make sure the final synthesis is in line with the query.
+Make sure the final synthesis is in line with the query.
 
-    Format your entire response as valid HTML. Use tags such as
-    <p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.
-    Do not wrap the response in markdown code blocks.
+Format your entire response as valid HTML. Use tags such as
+<p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.
+Do not wrap the response in markdown code blocks.
 
-    Structure the HTML as follows:
-    - A short status banner (<div class="status-success"> or "status-partial">).
-    - A summary paragraph (<p class="summary">).
-    - For each group of results, an <h3> heading with the type
-      (e.g. "Genes", "Traits", "Datasets") followed by a <ul class="card-list">.
-      Each item should be a <li class="card-item"> containing:
-        - <div class="card-title"><a href="URL">Name</a></div>
-        - <div class="card-description">Description</div> (optional)
-        - <div class="card-meta">Extra info</div> (optional)
-    - If there's need for a table, add a table with a <table class="data">
-    - If no results were found, a <div class="note-box"> explaining why.
-    - Any additional notes in a <div class="note-box"> at the end.
+CRITICAL – URL SAFETY RULES (prevents hallucination):
+1. NEVER invent, guess, or construct any URL.
+2. Only use URLs that appear verbatim in the `all_generation` input.
+3. Before outputting, verify: every `href` attribute value must be an exact substring
+   of the `all_generation` string. If you cannot verify, omit the link.
+4. Do not append, prepend, or modify URL fragments (e.g., no `#`, `?`, or path changes).
+
+Structure the HTML as follows:
+- A short status banner (<div class="status-success"> or "status-partial">).
+- A summary paragraph (<p class="summary">).
+- For each group of results, an <h3> heading with the type
+  (e.g. "Genes", "Traits", "Datasets") followed by a <ul class="card-list">.
+  Each item should be a <li class="card-item"> containing:
+    - <div class="card-title"><a href="URL">Name</a></div>
+    - <div class="card-description">Description</div> (optional)
+    - <div class="card-meta">Extra info</div> (optional)
+- If there's need for a table, add a table with a <table class="data">
+- If no results were found, a <div class="note-box"> explaining why.
+- Any additional notes in a <div class="note-box"> at the end.
+
     """
 
     original_query: str = dspy.InputField()
