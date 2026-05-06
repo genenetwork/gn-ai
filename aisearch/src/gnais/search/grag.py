@@ -1,6 +1,7 @@
 """Module with GraphRAG system for AI search in GeneNetwork"""
 
 import asyncio
+import functools
 import dspy
 from gnais.search.classification import extract_keywords
 from gnais.config import Config
@@ -102,9 +103,11 @@ async def graph_rag_search(
     sparql_gen = await asyncio.wait_for(
         loop.run_in_executor(
             tools.LLM_EXECUTOR,
-            _SPARQL_GEN,
-            original_query=sparql_prompt,
-            schema_hint=schema_hint,
+            functools.partial(
+                _SPARQL_GEN,
+                original_query=sparql_prompt,
+                schema_hint=schema_hint,
+            ),
         ),
         timeout=120.0,
     )
