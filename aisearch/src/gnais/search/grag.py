@@ -3,16 +3,16 @@
 import asyncio
 import functools
 import dspy
-from gnais.search.classification import extract_keywords
 from gnais.config import Config
 from gnais.search import tools
 from gnais.search.tools import with_memory, build_schema_hint, sparql_fetch
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 
 
-class SPARQLGenerator(dspy.Signature):
+class KeywordSPARQLGenerator(dspy.Signature):
     """
-Generate fast, efficient SPARQL SELECT queries that avoid Virtuoso timeouts (504 errors).
+Extract the essential keywords from the user's query, then generate fast,
+efficient SPARQL SELECT queries that avoid Virtuoso timeouts (504 errors).
 Use the schema hint to match keywords to exact properties and classes.
 
 CRITICAL PERFORMANCE RULES (to prevent 504s):
@@ -53,8 +53,9 @@ SELECT ?gene ?symbol WHERE {
 
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
+    keywords: str = dspy.OutputField(desc="Comma-separated essential keywords from the query")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Top 20 valid SPARQL SELECT queries to retrieve relevant information and provide detailed answers to original query using schema hints."
+        desc="Top 10 valid SPARQL SELECT queries with PREFIX declarations."
     )
 
 
@@ -67,7 +68,7 @@ class GraphRAG(dspy.Signature):
     )
 
 
-_SPARQL_GEN = dspy.Predict(SPARQLGenerator)
+_KW_SPARQL_GEN = dspy.Predict(KeywordSPARQLGenerator)
 
 _GRAG_STREAM = dspy.streamify(
     dspy.Predict(GraphRAG),
@@ -87,27 +88,22 @@ async def graph_rag_search(
     user_id: str = "default_user",
     chat_history: list = [],
 ):
-    yield {"status": "Extracting keywords…"}
-    loop = asyncio.get_running_loop()
-    keywords_pred = await loop.run_in_executor(
-        tools.LLM_EXECUTOR, extract_keywords, query
-    )
-    keywords = getattr(keywords_pred, "keywords", str(keywords_pred))
-
     grag_prompt = f"{system_prompt}\nQuery: {query}"
-    sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}\nEssential keywords in query: {keywords}"
-    yield {"status": f"Extracted essential keywords: {keywords}"}
+    sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}"
     schema_hint = build_schema_hint(sparql_url)
-    yield {"status": f"Generating sparql queries…"}
-    sparql_gen = await loop.run_in_executor(
+    yield {"status": "Generating keywords and SPARQL queries…"}
+    loop = asyncio.get_running_loop()
+    combined = await loop.run_in_executor(
         tools.LLM_EXECUTOR,
         functools.partial(
-            _SPARQL_GEN,
+            _KW_SPARQL_GEN,
             original_query=sparql_prompt,
             schema_hint=schema_hint,
         ),
     )
-    sparql_queries = getattr(sparql_gen, "sparql_queries", [])
+    keywords = getattr(combined, "keywords", "")
+    sparql_queries = getattr(combined, "sparql_queries", [])
+    yield {"status": f"Extracted keywords: {keywords}"}
     if sparql_queries is None:
         sparql_queries = []
     for i, query in enumerate(sparql_queries):
