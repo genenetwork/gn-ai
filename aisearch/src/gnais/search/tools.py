@@ -1,3 +1,4 @@
+import os
 import asyncio
 import concurrent.futures
 import functools
@@ -30,7 +31,7 @@ async def _exec_sparql(
 ) -> dict:
     """Execute a single SPARQL query with retry + exponential jitter via httpx."""
     client = httpx.AsyncClient(
-        httpx.Timeout(60.0, connect=5.0),
+        timeout=httpx.Timeout(180.0, connect=5.0),
         limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
     )
     for attempt in range(max_retries):
