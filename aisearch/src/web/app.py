@@ -99,7 +99,8 @@ _MEMORY = Memory(config=MemoryConfig(
         "provider": "chroma",
         "config": {
             "collection_name": "mem0",
-            "path": Config.MEM0_PATH,
+            "host": "localhost",
+            "port": 8000,
         },
     },
 ))
