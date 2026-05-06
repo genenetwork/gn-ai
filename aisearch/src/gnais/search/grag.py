@@ -108,9 +108,7 @@ async def graph_rag_search(
         yield {"status": f"({i+1}). sparql query: {query}"}
 
     yield {"status": "Querying knowledge graph…"}
-    sparql_results = await asyncio.to_thread(
-        sparql_fetch, sparql_queries, sparql_url
-    )
+    sparql_results = await sparql_fetch(sparql_queries, sparql_url)
 
     yield {"status": "Streaming response…"}
     async for value in _GRAG_STREAM(
