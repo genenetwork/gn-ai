@@ -56,28 +56,30 @@ def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str], set[str]]:
         }
     queries = {
         "literal": """
-            SELECT DISTINCT ?p
-            FROM <http://rdf.genenetwork.org/v1>
-            WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
+SELECT DISTINCT ?p
+  FROM <http://rdf.genenetwork.org/v1>
+WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
         """,
         "object": """
-            SELECT DISTINCT ?p
-            FROM <http://rdf.genenetwork.org/v1>
-            WHERE { ?s ?p ?o . FILTER isIRI(?o) }
+SELECT DISTINCT ?p
+  FROM <http://rdf.genenetwork.org/v1>
+WHERE { ?s ?p ?o . FILTER isIRI(?o) }
         """,
         "snapshot": """
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            PREFIX owl: <http://www.w3.org/2002/07/owl#>
-            PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-            SELECT SAMPLE(?obj) AS ?o
-            WHERE {
-            ?subject skos:member ?obj .
-            BIND(skos:member AS ?predicate)
-            BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
-            FILTER (?subject != ?obj)
-            FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
-            }
-            GROUP BY ?subject ?predicate ?stem
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+SELECT SAMPLE(?obj) AS ?o
+  FROM <http://rdf.genenetwork.org/v1>
+WHERE {
+    ?subject skos:member ?obj .
+    BIND(skos:member AS ?predicate)
+    BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
+    FILTER (?subject != ?obj)
+    FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
+}
+GROUP BY ?subject ?predicate ?stem
         """,
     }
 
