@@ -72,7 +72,7 @@ async def rag_search(
     prompt = f"{system_prompt}\nQuery: {query}"
     yield {"status": "Fetching context…"}
     context = await asyncio.wait_for(
-        asyncio.to_thread(retriever.invoke, query), timeout=6000
+        asyncio.to_thread(retriever.invoke, query), timeout=30.0
     )
     yield {"status": "Streaming response…"}
     async for value in _RAG_STREAM(
