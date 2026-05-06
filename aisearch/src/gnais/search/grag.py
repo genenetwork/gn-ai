@@ -6,7 +6,6 @@ from gnais.search.classification import extract_keywords
 from gnais.config import Config
 from gnais.search.tools import with_memory, build_schema_hint, sparql_fetch
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
-from SPARQLWrapper import JSON, SPARQLWrapper
 
 
 class SPARQLGenerator(dspy.Signature):
@@ -77,8 +76,6 @@ _GRAG_STREAM = dspy.streamify(
 )
 
 
-# Warm schema cache at import time to avoid blocking the first request
-_ = build_schema_hint(Config.SPARQL_ENDPOINT)
 
 
 @with_memory(memory_type="grag")
