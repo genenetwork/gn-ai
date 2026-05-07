@@ -178,24 +178,6 @@ async def search_stream():
         session["user_id"] = str(uuid.uuid4())
         user_id = session["user_id"]
 
-    # Cache hit — serve the final synthesis instantly
-    cache_key = f"search_result:{query}"
-    cached = await asyncio.to_thread(cache.get, cache_key)
-    if cached:
-        async def cached_stream():
-            yield _format_sse("search_state", _stream_status_markup("Complete", "complete"))
-            yield _format_sse("final_html", cached)
-            yield _format_sse("stream_end", "<div></div>")
-        return Response(
-            cached_stream(),
-            mimetype="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",
-            },
-        )
-
     async def event_stream():
         completed = set()
         final_sent = False
@@ -279,7 +261,7 @@ async def search_stream():
 
                 if source == "hybrid" and kind == "final":
                     final_sent = True
-                    await asyncio.to_thread(cache.set, cache_key, content, timeout=3600)
+                    # await asyncio.to_thread(cache.set, cache_key, content, timeout=3600)
                     yield _format_sse("final_html", content)
                     yield _format_sse("search_state", _stream_status_markup("Complete", "complete"))
                     yield _format_sse("stream_end", "<div></div>")
