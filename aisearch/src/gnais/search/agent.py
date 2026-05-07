@@ -14,11 +14,12 @@ from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
 
 class AgentSig(dspy.Signature):
     query: str = dspy.InputField()
-    chat_history: str = dspy.InputField()
+    chat_history: list = dspy.InputField(desc="Previous conversation context")
     solution: str = dspy.OutputField(
-        desc="""Return the answer as valid HTML only. Use only safe body tags such as
-<p>, <ul>, <ol>, <li>, <a>, <strong>, <em>, <code>, <pre>, and <br>.
-Do not use Markdown. Do not wrap the answer in ```html fences.
+        desc="""Return the answer as valid HTML only. Use the chat
+history as context.  Use only safe body tags such as <p>, <ul>, <ol>,
+<li>, <a>, <strong>, <em>, <code>, <pre>, and <br>.  Do not use
+Markdown. Do not wrap the answer in ```html fences.
 
 Link correctness is mandatory. Every <a href="..."> URL MUST come directly
 from a SPARQL tool result returned by the configured Virtuoso endpoint.
