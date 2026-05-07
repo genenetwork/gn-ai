@@ -388,13 +388,15 @@ def with_memory(memory_type: str = "interaction"):
                 if isinstance(value, dict):
                     feedback = str(value.get("final"))
                     if memory_tools and feedback:
-                        memory_tools.store_memory(
-                            feedback,
-                            user_id=user_id,
-                            run_id=memory_type,
-                            metadata={
-                                "query": query
-                            }
+                        # Fire-and-forget: don't block the stream on SQLite writes
+                        asyncio.create_task(
+                            asyncio.to_thread(
+                                memory_tools.store_memory,
+                                feedback,
+                                user_id=user_id,
+                                run_id=memory_type,
+                                metadata={"query": query},
+                            )
                         )
                 yield value
         return wrapper
