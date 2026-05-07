@@ -257,12 +257,11 @@ def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
         sparql_queries = pred.get("translated_queries") if pred else []
         if not sparql_queries:
             return "No SPARQL queries generated."
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(
-                asyncio.run,
-                sparql_fetch(sparql_queries, sparql_uri)
-            )
-            return future.result()
+        future = LLM_EXECUTOR.submit(
+            asyncio.run,
+            sparql_fetch(sparql_queries, sparql_uri)
+        )
+        return future.result()
 
     return dspy.Tool(
         name="fetch_data",
