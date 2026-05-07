@@ -64,7 +64,7 @@ class GraphRAG(dspy.Signature):
     sparql_results: str = dspy.InputField(desc="JSON results from the SPARQL query")
     chat_history: list = dspy.InputField(desc="History of conversation")
     feedback: str = dspy.OutputField(
-        desc="System response to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>.  Links from sparql results can only be formed by valid IRIs and NOT literals.  Use the sparql results and chat history when answering."
+        desc="System response to the query with detailed answers and the final answer, formatted as valid HTML using tags such as <p>, <ul>, <li>, <a>, <strong>, <em>, and <br>.  Links from sparql results can only be formed by valid IRIs and NOT literals.  Use the orinial query, sparql results and chat history when answering."
     )
 
 
