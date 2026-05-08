@@ -100,7 +100,7 @@ _MEMORY = Memory(config=MemoryConfig(
         "config": {
             "collection_name": "mem0",
             "host": "localhost",
-            "port": 8000,
+            "port": 8001,
         },
     },
 ))
