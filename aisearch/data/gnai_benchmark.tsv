@@ -1,4 +1,4 @@
-question	answer	link for verification
+query	answer	link for verification
 How many distinct taxonomic families are defined in the GeneNetwork?	3; Vertebrates, Other Metazoa, Plants	http://rdf.genenetwork.org/v1/category/taxonomic_family
 Which vertebrates are available in GeneNetwork?	 Glossophaga soricina, Rattus norvegicus, Mus musculus, Homo sapiens	http://rdf.genenetwork.org/v1/id/family_Vertebrates
 Do you have data on any metazoa?	Yes; this includes Oryzias latipes, Drosophila melanogaster, Caenorhabditis elegans	http://rdf.genenetwork.org/v1/id/family_Other_Metazoa
