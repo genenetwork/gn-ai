@@ -1,4 +1,4 @@
-"""Script for evaluation of hybrid search performance"""
+"""Script for performance evaluation of GN AI systems"""
 
 import argparse
 import asyncio
