@@ -23,7 +23,6 @@ def get_dataset(
         dataset_path,
         sep="\t",
         usecols=column_names,
-        nrows=2,
     )
     data_dicts = data[column_names].to_dict(orient="records")
     evaluation_set = [
@@ -183,7 +182,7 @@ if __name__ == "__main__":
         for n in range(N_ITERATIONS):
             system_output = run_eval(evaluate, evaluation_set, system)
             temp.append(system_output.get("score"))
-        collection[f"{system.__name__}"] = temp
+        collection[system.__name__] = temp
 
     final = pd.DataFrame(collection)
     final.to_csv(OUTPUT_PATH, index=False)
