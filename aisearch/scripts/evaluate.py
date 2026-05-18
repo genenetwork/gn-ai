@@ -178,11 +178,13 @@ if __name__ == "__main__":
 
     # Run evaluation set with GN systems
     for system in [rag_search, graph_rag_search, agent_search, hybrid_search]:
+        print(f"Running evaluation for {system}")
         temp = []
         for n in range(N_ITERATIONS):
+            print(f"Iteration {n+1}")
             system_output = run_eval(evaluate, evaluation_set, system)
             temp.append(system_output.get("score"))
         collection[system.__name__] = temp
-
+        print(f"Evaluation completed for {system}")
     final = pd.DataFrame(collection)
     final.to_csv(OUTPUT_PATH, index=False)
