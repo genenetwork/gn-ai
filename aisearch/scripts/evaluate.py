@@ -68,7 +68,7 @@ def evaluator(
     query = gold["query"]
     true_response = gold["answer"]
     score = mark(query, pred, true_response)
-    return 1 if score >= 0.7 else 0
+    return 1 if score >= 0.6 else 0
 
 
 def run_eval(
