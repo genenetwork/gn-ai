@@ -1,5 +1,5 @@
 query	answer	link for verification
-How many distinct taxonomic families are defined in the GeneNetwork?	3; Vertebrates, Other Metazoa, Plants	http://rdf.genenetwork.org/v1/category/taxonomic_family
+How many distinct taxonomic families are defined in GeneNetwork?	3; Vertebrates, Other Metazoa, Plants	http://rdf.genenetwork.org/v1/category/taxonomic_family
 Which vertebrates are available in GeneNetwork?	 Glossophaga soricina, Rattus norvegicus, Mus musculus, Homo sapiens	http://rdf.genenetwork.org/v1/id/family_Vertebrates
 Do you have data on any metazoa?	Yes; this includes Oryzias latipes, Drosophila melanogaster, Caenorhabditis elegans	http://rdf.genenetwork.org/v1/id/family_Other_Metazoa
 Which human reference genome assembly is used in GeneNetwork?	hg19	http://rdf.genenetwork.org/v1/id/Homo_sapiens
@@ -8,7 +8,7 @@ What is Oryzias latipes?	fish also called medaka	http://rdf.genenetwork.org/v1/i
 Which species has the UniProt taxonomy ID 3689?	Populus trichocarpa	http://rdf.genenetwork.org/v1/id/Populus_trichocarpa
 What is the model organism for human disease in GeneNetwork?	Mus musculus (mouse)	http://rdf.genenetwork.org/v1/id/Mus_musculus
 What are the reference populations in GeneNetwork?	BXD, BXH, LXS, MDP, CC, AKXD, AXBXA, CXB, and HXBBXH	http://rdf.genenetwork.org/v1/id/population_Reference_Populations__replicate_average__SE__N_
-What are the inbred sets in the HRDP-HXB/BXH population?     HRDP_HXB_BXH_BP and HRDP_HXB_BXH_Metb	http://rdf.genenetwork.org/v1/id/population_HRDP_HXB_BXH_Individual_Data
+What are the inbred sets in the HRDP-HXB/BXH population?    HRDP_HXB_BXH_BP and HRDP_HXB_BXH_Metb	http://rdf.genenetwork.org/v1/id/population_HRDP_HXB_BXH_Individual_Data
 Which populations are considered non-genetic (lack genetic panel)?	B6_Lens, B6D2, CIE_INIA, CIE_RMA, JAX_D2_Mono_RNA_Seq, C57BL_6JxC57BL_6NJF2, NZBXFVB_N2, Retina_RGC_Rheaume, EMSR, Scripps_2013, and D2GM	http://rdf.genenetwork.org/v1/id/population_Non_genetic_Cohort
 What are the sets in the Heterogeneous Stock population? HSNIH_Palmer, HSNIH_RGSMC, NWU_WKYxF344_F2, SRxSHRSPF2, and HSNIH_Palmer_r4	http://rdf.genenetwork.org/v1/id/population_Crosses_and_Heterogeneous_Stock__individuals_
 Are genotypes available for the HIV-1Tg set?	No	http://rdf.genenetwork.org/v1/id/population_Groups_Without_Genotypes
