@@ -21,7 +21,6 @@ from markupsafe import escape
 
 app = Quart(__name__)
 app.config.from_object(Config)
-app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", os.urandom(32))
 
 # Set up template and static directories
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
