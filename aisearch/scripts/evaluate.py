@@ -52,13 +52,13 @@ def mark(
     You must compare only informations that are strictly relevant to the query.
     User query: {query}\nAI answer: {generated_response}\nTrue answer: {true_response}"""
 
-    tp_question = f"{context}\nHow many elements of response to the query are mentioned in the generated answer and somewhat highlighted in the true answer as well?"
+    tp_question = f"{context}\nThe objective is to compute the number of true positives by comparing the generated answer and true answer. True positives are elements of response to the query that are mentioned in the generated answer and somewhat highlighted in the true answer as well. How many true positives do you count?"
     tp_score = assess(question=tp_question).get("answer")
 
-    fp_question = f"{context}\nHow many informations are present in the generated answer and not reflected in any ways in the true answer despite providing direct solution to the query?"
+    fp_question = f"{context}\nThe objective is to compute the number of false positives by comparing the generated answer and true answer. False positives are explicit and highly relevant elements of response to the query that are present in the generated answer and are not supported in any ways by the true answer. They should not be covered by a reformulation of the true answer. How many false positives do you count?"
     fp_score = assess(question=fp_question).get("answer")
 
-    fn_question = f"{context}\nHow many elements of response to the query feature in the true answer and are not supported by the generated answer?"
+    fn_question = f"{context}\nThe objective is to compute the number of false negatives by comparing the generated answer and true answer. False negatives are elements of response to the query that feature in the true answer and are not supported by the generated answer. How many false negatives do you count?"
     fn_score = assess(question=fn_question).get("answer")
 
     print(
