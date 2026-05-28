@@ -10,6 +10,13 @@ import pandas as pd
 import torch
 from dotenv import load_dotenv
 from gnais.search.agent import agent_search
+from gnais.search.classification import classify_search
+from gnais.search.corpus import (
+    create_ensemble_retriever,
+    get_chroma_db,
+    get_docs,
+    init_chroma_db,
+)
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.ragent import hybrid_search
@@ -80,19 +87,8 @@ def evaluator(
 def run_eval(
     runner: dspy.Evaluate,
     evaluation_set: list[dspy.Example],
-    system: Any,
+    search_func: Any,
 ) -> dspy.evaluate.EvaluationResult:
-
-    def search_func(query: str) -> str:
-        """Wrap hybrid search in a sync version that consume streaming tokens and return the final answer"""
-
-        async def _consume():
-            results = []
-            async for result in system(query):
-                results.append(result)
-            return "\n\n".join(str(r) for r in results)
-
-        return asyncio.run(_consume())
 
     search = dspy.Tool(
         name="search",
@@ -127,7 +123,9 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=args.env_file)
 
+    CORPUS_PATH = os.getenv("CORPUS_PATH")
     DB_PATH = os.getenv("DB_PATH")
+    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
     DATASET_PATH = os.getenv("DATASET_PATH")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH")
     SEED = int(os.getenv("SEED"))
@@ -184,9 +182,68 @@ if __name__ == "__main__":
     base_output = [evaluate(base).get("score") for n in range(N_ITERATIONS)]
     collection["base"] = base_output
 
+    # Wrap search functions inside conveniences
+    def rag_digest(
+        query: str, memory: Any = None, user_id: str = "default_user"
+    ) -> str:
+        async def _run() -> str:
+            docs = get_docs(CORPUS_PATH)
+            chroma_db = get_chroma_db(embed_model="Qwen/Qwen3-Embedding-0.6B")
+            decision = classify_search(query).get("decision")
+            retriever = create_ensemble_retriever(
+                chroma_db=chroma_db,
+                docs=docs,
+                keyword_weight=0.7 if decision == "keyword" else 0.5,
+            )
+
+            parts = []
+            async for chunk in rag_search(
+                query=query,
+                retriever=retriever,
+                memory=memory,
+                user_id=user_id,
+            ):
+                parts.append(str(chunk))
+            return "".join(parts)
+
+        return asyncio.run(_run())
+
+    def sparql_digest(
+        query: str, handler: Any, memory: Any = None, user_id: str = "default_user"
+    ):
+        async def _run():
+            parts = []
+            async for chunk in handler(
+                query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id
+            ):
+                parts.append(str(chunk))
+            return "".join(parts)
+
+        return asyncio.run(_run())
+
+    def graph_rag_digest(query: str, memory: Any = None, user_id: str = "default_user"):
+        return sparql_digest(query, graph_rag_search, memory=memory, user_id=user_id)
+
+    def agent_digest(query: str, memory: Any = None, user_id: str = "default_user"):
+        return sparql_digest(query, agent_search, memory=memory, user_id=user_id)
+
+    def hybrid_digest(query: str, memory: Any = None, user_id: str = "default_user"):
+        async def _run():
+            final_html = None
+            async for event in hybrid_search(query, user_id=user_id, memory=memory):
+                source = event["source"]
+                kind = event["kind"]
+                content = event["content"]
+                if source == "hybrid" and kind == "final":
+                    final_html = content
+                    break
+            return final_html
+
+        return asyncio.run(_run())
+
     # Run evaluation set with GN systems
-    for system in [rag_search, graph_rag_search, agent_search, hybrid_search]:
-        system_name = system.__name__
+    for system in [rag_digest, graph_rag_digest, agent_digest, hybrid_digest]:
+        system_name = " ".join(system.__name__.split("_")[:-1])
         print(f"Running evaluation for {system_name}")
         temp = []
         for n in range(N_ITERATIONS):
