@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import os
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
@@ -181,7 +182,7 @@ if __name__ == "__main__":
     evaluate = dspy.Evaluate(
         devset=evaluation_set,
         metric=evaluator,
-        num_threads=1,
+        num_threads=4,
         provide_traceback=True,
         display_table=False,
         display_progress=True,
@@ -196,7 +197,7 @@ if __name__ == "__main__":
 
     # Wrap search functions inside conveniences
     def rag_digest(
-        query: str, memory: Any = None, user_id: str = "default_user"
+        query: str, memory: Any = None
     ) -> str:
         async def _run() -> str:
             docs = get_docs(CORPUS_PATH)
@@ -213,16 +214,16 @@ if __name__ == "__main__":
                 query=query,
                 retriever=retriever,
                 memory=memory,
-                user_id=user_id,
+                user_id=str(uuid.uuid4()),
             ):
                 parts.append(str(chunk))
             return "".join(parts)
 
-        return _run_async(_run())
+        return _run_async(_run)
 
     def sparql_digest(
         query: str, handler: Any, memory: Any = None, user_id: str = "default_user"
-    ):
+    ) -> str:
         async def _run():
             parts = []
             async for chunk in handler(
@@ -231,18 +232,18 @@ if __name__ == "__main__":
                 parts.append(str(chunk))
             return "".join(parts)
 
-        return _run_async(_run())
+        return _run_async(_run)
 
-    def graph_rag_digest(query: str, memory: Any = None, user_id: str = "default_user"):
-        return sparql_digest(query, graph_rag_search, memory=memory, user_id=user_id)
+    def graph_rag_digest(query: str, memory: Any = None) -> str:
+        return sparql_digest(query, graph_rag_search, memory=memory, user_id=str(uuid.uuid4()))
 
-    def agent_digest(query: str, memory: Any = None, user_id: str = "default_user"):
-        return sparql_digest(query, agent_search, memory=memory, user_id=user_id)
+    def agent_digest(query: str, memory: Any = None) -> str:
+        return sparql_digest(query, agent_search, memory=memory, user_id=str(uuid.uuid4()))
 
-    def hybrid_digest(query: str, memory: Any = None, user_id: str = "default_user"):
+    def hybrid_digest(query: str, memory: Any = None) -> str:
         async def _run():
             final_html = None
-            async for event in hybrid_search(query, user_id=user_id, memory=memory):
+            async for event in hybrid_search(query, memory=memory, user_id=str(uuid.uuid4())):
                 source = event["source"]
                 kind = event["kind"]
                 content = event["content"]
@@ -251,7 +252,7 @@ if __name__ == "__main__":
                     break
             return final_html
 
-        return _run_async(_run())
+        return _run_async(_run)
 
     # Run evaluation set with GN systems
     for system in [rag_digest, graph_rag_digest, agent_digest, hybrid_digest]:
