@@ -6,9 +6,11 @@ import os
 from typing import Any
 
 import dspy
+import nest_asyncio
 import pandas as pd
 import torch
 from dotenv import load_dotenv
+
 from gnais.search.agent import agent_search
 from gnais.search.classification import classify_search
 from gnais.search.corpus import (
@@ -117,6 +119,7 @@ def run_eval(
 
 
 if __name__ == "__main__":
+    nest_asyncio.apply()
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", default=".env", help="Path to .env file")
     args = parser.parse_args()
@@ -169,7 +172,7 @@ if __name__ == "__main__":
     evaluate = dspy.Evaluate(
         devset=evaluation_set,
         metric=evaluator,
-        num_threads=1,
+        num_threads=2,
         provide_traceback=True,
         display_table=False,
         display_progress=True,
