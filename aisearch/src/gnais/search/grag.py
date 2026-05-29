@@ -35,7 +35,13 @@ SPARQL SYNTAX RULES (remember):
 - Object properties (e.g., gnt:has_phenotype_trait) link to resources. Chain with `?s gnt:has_phenotype_trait ?o . ?o rdf:type <Class>`.
 - Only use properties listed in the provided schema. Do NOT invent new ones.
 - EVERY query MUST start with the PREFIX declarations from the schema.
-
+- To extract information about a specific trait, find the closest matches in SNAPSHOT_OBJECTS and use them to infer the proper RDF subject for the trait.
+- To get trait page or URL, use the predicate `gnt:has_trait_page` with the trait as subject. Its object correspond to the URL. Never build trait URLs manually.
+- To get publication for a trait, search for object having the predicate `dcterms:references` and the trait as subject.
+- To get highest LOD score and corresponding marker and additive effect, use the predicates `gnt:lod_score`, `gnt:locus`, and `gnt:additive`, respectively.
+- Mean trait measurements can be accessed by looking up object with predicate gnt:mean and the trait as subject.
+- Trait descriptions can be accessed via the predicate `dcterms:description`
+- When you have the description of a trait, you should use regex pattern in the object term with the predicate `dcterms:description` to find the corresponding trait (subject)
 Example of an efficient query:
 
 ```
