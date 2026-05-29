@@ -30,7 +30,6 @@ def get_dataset(
 ) -> list[dspy.Example]:
     data = pd.read_csv(
         dataset_path,
-        sep="\t",
         usecols=column_names,
     )
     data_dicts = data[column_names].to_dict(orient="records")
