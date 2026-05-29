@@ -38,7 +38,6 @@ dependencies = [
     "hypercorn (>=0.17.0,<1.0.0)",
     "mem0ai[nlp] (==2.0.1)",
     "rich (==13.9.4)",
-    "nest-asyncio (>=1.6.0,<2.0.0)"
 ]
 
 [project.urls]

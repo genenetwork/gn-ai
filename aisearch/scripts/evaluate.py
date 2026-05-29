@@ -3,14 +3,13 @@
 import argparse
 import asyncio
 import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import dspy
-import nest_asyncio
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-
 from gnais.search.agent import agent_search
 from gnais.search.classification import classify_search
 from gnais.search.corpus import (
@@ -117,8 +116,19 @@ def run_eval(
     return runner(program)
 
 
+_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="search")
+
+
+def _run_async(async_fn, *args, **kwargs):
+    """Run async function in a separate thread with a fresh event loop"""
+
+    def _worker():
+        return asyncio.run(async_fn(*args, **kwargs))
+
+    return _TOOL_EXECUTOR.submit(_worker).result()
+
+
 if __name__ == "__main__":
-    nest_asyncio.apply()
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", default=".env", help="Path to .env file")
     args = parser.parse_args()
@@ -171,7 +181,7 @@ if __name__ == "__main__":
     evaluate = dspy.Evaluate(
         devset=evaluation_set,
         metric=evaluator,
-        num_threads=2,
+        num_threads=1,
         provide_traceback=True,
         display_table=False,
         display_progress=True,
@@ -208,7 +218,7 @@ if __name__ == "__main__":
                 parts.append(str(chunk))
             return "".join(parts)
 
-        return asyncio.run(_run())
+        return _run_async(_run())
 
     def sparql_digest(
         query: str, handler: Any, memory: Any = None, user_id: str = "default_user"
@@ -221,7 +231,7 @@ if __name__ == "__main__":
                 parts.append(str(chunk))
             return "".join(parts)
 
-        return asyncio.run(_run())
+        return _run_async(_run())
 
     def graph_rag_digest(query: str, memory: Any = None, user_id: str = "default_user"):
         return sparql_digest(query, graph_rag_search, memory=memory, user_id=user_id)
@@ -241,7 +251,7 @@ if __name__ == "__main__":
                     break
             return final_html
 
-        return asyncio.run(_run())
+        return _run_async(_run())
 
     # Run evaluation set with GN systems
     for system in [rag_digest, graph_rag_digest, agent_digest, hybrid_digest]:
