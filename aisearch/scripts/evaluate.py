@@ -119,7 +119,7 @@ def run_eval(
     return runner(program)
 
 
-_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=2, thread_name_prefix="search")
+_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
 
 
 def _run_async(async_fn, *args, **kwargs):
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     evaluate = dspy.Evaluate(
         devset=evaluation_set,
         metric=evaluator,
-        num_threads=4,
+        num_threads=1,
         provide_traceback=True,
         display_table=False,
         display_progress=True,
