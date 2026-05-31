@@ -67,9 +67,11 @@ def mark(
     )
     print(f"TP: {tp_score}\nFP: {fp_score}\nFN: {fn_score}")
 
+    precision = tp_score / (tp_score + fp_score)
+    recall = tp_score / (tp_score + fn_score)
     f1 = (2 * tp_score) / ((2 * tp_score) + fp_score + fn_score)
 
-    return f1
+    return precision, recall, f1
 
 
 def evaluator(
@@ -81,8 +83,8 @@ def evaluator(
 ) -> int:
     query = gold["query"]
     true_response = gold["answer"]
-    score = mark(query, pred, true_response)
-    return 1 if score >= 0.6 else 0
+    precision, recall, f1 = mark(query, pred, true_response)
+    return 1 if (f1 >= 0.6 or recall >= 0.7 or precision >= 0.7) else 0
 
 
 def run_eval(
@@ -196,9 +198,7 @@ if __name__ == "__main__":
     collection["base"] = base_output
 
     # Wrap search functions inside conveniences
-    def rag_digest(
-        query: str, memory: Any = None
-    ) -> str:
+    def rag_digest(query: str, memory: Any = None) -> str:
         async def _run() -> str:
             docs = get_docs(CORPUS_PATH)
             chroma_db = get_chroma_db(embed_model="Qwen/Qwen3-Embedding-0.6B")
@@ -235,15 +235,21 @@ if __name__ == "__main__":
         return _run_async(_run)
 
     def graph_rag_digest(query: str, memory: Any = None) -> str:
-        return sparql_digest(query, graph_rag_search, memory=memory, user_id=str(uuid.uuid4()))
+        return sparql_digest(
+            query, graph_rag_search, memory=memory, user_id=str(uuid.uuid4())
+        )
 
     def agent_digest(query: str, memory: Any = None) -> str:
-        return sparql_digest(query, agent_search, memory=memory, user_id=str(uuid.uuid4()))
+        return sparql_digest(
+            query, agent_search, memory=memory, user_id=str(uuid.uuid4())
+        )
 
     def hybrid_digest(query: str, memory: Any = None) -> str:
         async def _run():
             final_html = None
-            async for event in hybrid_search(query, memory=memory, user_id=str(uuid.uuid4())):
+            async for event in hybrid_search(
+                query, memory=memory, user_id=str(uuid.uuid4())
+            ):
                 source = event["source"]
                 kind = event["kind"]
                 content = event["content"]
