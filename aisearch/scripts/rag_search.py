@@ -29,7 +29,7 @@ def _digest(query: str, memory: Memory, user_id: str, corpus_path: str, db_path:
     async def _run() -> str:
 
         docs = get_docs(corpus_path)
-        chroma_db = get_chroma_db(chroma_db_path=db_path, embed_model="Qwen/Qwen3-Embedding-0.6B")
+        chroma_db = get_chroma_db(embed_model="Qwen/Qwen3-Embedding-0.6B")
         decision = classify_search(query).get("decision")
         retriever = create_ensemble_retriever(
             chroma_db=chroma_db,
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         os.environ["MOONSHOT_API_KEY"]=API_KEY
     elif "anthropic" in MODEL_NAME.lower():
         os.environ["ANTHROPIC_API_KEY"]=API_KEY
-    
+
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
@@ -131,7 +131,8 @@ if __name__ == "__main__":
             "provider": "chroma",
             "config": {
                 "collection_name": "mem0",
-                "path": os.path.join(DB_PATH, "mem0_chroma"),
+                "host": "localhost",
+                "port": 8001,
             },
         },
     )
