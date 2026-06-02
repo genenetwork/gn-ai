@@ -2,45 +2,41 @@
 
 ## Description
 
-**GNAIS** (GeneNetwork AI Search) is a python package that helps digest metadata around GeneNetwork using language models. It allows running natural language queries against RDF data (metadata) converted to text and preprocessed locally.
+**GNAIS** (GeneNetwork AI Search) is a search package that helps digest metadata around GeneNetwork using language models. It allows running natural language queries against RDF data (metadata) and enriching LLM context.
 
-**GNAIS** performs a hybrid search (keyword and semantic) through a RAG (Retrieval Augmented Generation) system. The embedding model for semantic is Qwen/Qwen3-Embedding-0.6B (open model).
+**GNAIS** can perform:
+- document RAG search
+- graph RAG search
+- agentic search
+- hybrid search
 
-We implemented **GNAIS** using [DSPy](https://dspy.ai/). Switching between LLM providers for the text generation model is as easy as changing a variable :)
+**GNAIS** was implemented using [DSPy](https://dspy.ai/). Switching between LLM providers for the text generation model is as easy as changing a variable declaration.
 
 ## Installation
 
-**GNAIS** is in PyPI. You can install it in your virtual environment using the following commands:
+**GNAIS** was packaged. You can install it in your virtual environment using the following commands:
 
 ```python
+git clone https://github.com/genenetwork/gn-ai.git
+cd aisearch
 python -m venv .venv
 source .venv/bin/activate
-pip install gnais
+poetry install
 ```
 
 ## Usage
 
-To use **GNAIS**, you need to define a few parameters from your bash environment.
+To run **GNAIS**, you need to define a few parameters in your bash environment.
 
-```bash
-export CORPUS_PATH=<YOUR_PATH>
-export PCORPUS_PATH=<YOUR_PATH>
-export DB_PATH=<YOUR_PATH>
-export SEED=<YOUR_VALUE>
-export MODEL_TYPE=<YOUR_VALUE>
-export MODEL_NAME=<DSPY_COMPLIANT_MODEL_NAME>
-export API_KEY=<YOUR_API_KEY_IF_REQUIRED>
-export QUERY=<YOUR_QUERY>
-```
+We recommend setting them in a file. Check `aisearch/.env.example`
 
-Once defined, you can run your search from a Python shell or script with:
+Once defined, you can run your search query using scripts in `aisearch/scripts`
 
 ```python
-from gnais.search import search, QUERY
-from gnais.search import *
-
-search(QUERY)
+python grag_search.py "List behavioral traits available in GeneNetwork"
 ```
+
+Replace "List behavioral traits available in GeneNetwork" by your query.
 
 ## Examples
 
