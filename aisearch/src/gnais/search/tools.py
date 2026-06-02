@@ -222,7 +222,7 @@ CRITICAL PERFORMANCE RULES (to prevent 504s):
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     translated_queries: list[str] = dspy.OutputField(
-        desc="Top 10 valid SPARQL SELECT query with PREFIX declarations."
+        desc="Top 4 valid most relevant SPARQL queries with the highest likelihood of getting non-empty results."
     )
 
 
