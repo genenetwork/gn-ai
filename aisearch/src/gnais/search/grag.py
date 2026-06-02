@@ -30,8 +30,21 @@ CRITICAL PERFORMANCE RULES (to prevent 504s):
 9. Use `OPTIONAL` only for truly optional patterns – otherwise, use a simple triple pattern.
 10. Limit the number of generated queries - output at most 10 (not 20) per request.
 
-SPARQL SYNTAX RULES (remember):
+CRITICAL SCHEMA RULES (remember):
 - Literal properties (e.g., gnt:gene_symbol, dct:title) hold strings/numbers. Use `FILTER(?literal = "value")`, not `?o a <Class>`.
+- ALWAYS include `FROM <http://rdf.genenetwork.org/v1>` between SELECT and WHERE.
+- Strain URIs: use gn:set_BXD, gn:set_B6D2F1, gn:set_HMDP — NEVER gn:BXD, gn:B6D2F1, gn:HMDP.
+- gnc:phenotype is metadata only (abbreviation, description, lab_code, submitter, contributor). Phenotype TRAITS (with mean, locus, lod_score, additive, sequence, has_trait_page) are gnc:phenotype_trait.
+- Probesets and DNA markers use gnt:chr for chromosome. Genes use gnt:chromosome.
+- gnt:has_uniprot_id, gnt:has_homologene_id, gnt:has_kegg_id, gnt:has_omim_id, gnt:has_chebi_id, gnt:has_pub_chem_id exist on gnc:probeset, NOT on gnc:gene.
+- gnt:has_align_id, gnt:has_protein_id, gnt:has_rgd_id, gnc:has_kg_id, gnc:has_unigen_id exist on gnc:gene, NOT on gnc:dna_marker. Markers use skos:prefLabel or skos:altLabel for names.
+- gnt:locus on phenotype_trait contains chromosome positions (e.g. "1-59904011"), NOT phenotype names. Never FILTER gnt:locus for trait names like "liver_weight". Instead link trait -> has_phenotype -> phenotype and filter gnt:abbreviation.
+- gnt:symbol is for probesets. gnt:gene_symbol is for genes and strains.
+- Datasets are dcat:Dataset. They have dct:title, gnt:has_strain, gnt:has_tissue_info, gnt:has_samples, gnt:has_summary, gnt:has_citation, gnt:has_contributors, gnt:has_case_info, gnt:has_platform_info, gnt:has_specifics, gnt:has_data_processing_info, gnt:has_experiment_design, gnt:has_experiment_type, gnt:has_genotype_files.
+- Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+- Gene chips / platforms are skos:Concept with skos:inScheme gnc:gene_chip. They have gnt:has_go_tree_value, gnt:has_geo_series_id.
+- Mapping methods and averaging methods are skos:Concept in gnc:mapping_method and gnc:avg_method schemes.
+- gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
 - Object properties (e.g., gnt:has_phenotype_trait) link to resources. Chain with `?s gnt:has_phenotype_trait ?o . ?o rdf:type <Class>`.
 - Only use properties listed in the provided schema. Do NOT invent new ones.
 - EVERY query MUST start with the PREFIX declarations from the schema.
@@ -49,7 +62,7 @@ PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
 PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 
-SELECT ?gene ?symbol WHERE {
+SELECT ?gene ?symbol FROM <http://rdf.genenetwork.org/v1> WHERE {
     ?gene rdf:type gnc:gene .
     ?gene gnt:gene_symbol ?symbol .
     FILTER(STRSTARTS(?symbol, "Shh"))
