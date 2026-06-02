@@ -191,17 +191,31 @@ CRITICAL RULES:
 class QueryTranslation(dspy.Signature):
     """Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
 Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
-CRITICAL:
+
+CRITICAL SCHEMA RULES (derived from GeneNetwork RDF transforms):
 1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
-2. Leverage as many schema hints as possible.
-3. To extract information about a specific trait, find the closest matches in SNAPSHOT_OBJECTS and use them to infer the proper RDF subject for the trait.
-4. To get trait page or URL, use the predicate `gnt:has_trait_page` with the trait as subject. Its object correspond to the URL. Never build trait URLs manually.
-5. To get publication for a trait, search for object having the predicate `dcterms:references` and the trait as subject.
-6. To get highest LOD score and corresponding marker and additive effect, use the predicates `gnt:lod_score`, `gnt:locus`, and `gnt:additive`, respectively.
-7. Mean trait measurements can be accessed by looking up object with predicate gnt:mean and the trait as subject.
-8. Trait descriptions can be accessed via the predicate `dcterms:description`
-9. When you have the description of a trait, you should use regex pattern in the object term with the predicate `dcterms:description` to find the corresponding trait (subject)
-    
+2. ALWAYS include `FROM <http://rdf.genenetwork.org/v1>` between SELECT and WHERE.
+3. Strain URIs: use gn:set_BXD, gn:set_B6D2F1, gn:set_HMDP — NEVER gn:BXD, gn:B6D2F1, gn:HMDP.
+4. gnc:phenotype is metadata only (abbreviation, description, lab_code, submitter, contributor). Phenotype TRAITS (with mean, locus, lod_score, additive, sequence, has_trait_page) are gnc:phenotype_trait.
+5. Probesets and DNA markers use gnt:chr for chromosome. Genes use gnt:chromosome.
+6. gnt:has_uniprot_id, gnt:has_homologene_id, gnt:has_kegg_id, gnt:has_omim_id, gnt:has_chebi_id, gnt:has_pub_chem_id exist on gnc:probeset, NOT on gnc:gene.
+7. gnt:has_align_id, gnt:has_protein_id, gnt:has_rgd_id, gnc:has_kg_id, gnc:has_unigen_id exist on gnc:gene, NOT on gnc:dna_marker. Markers use skos:prefLabel or skos:altLabel for names.
+8. gnt:locus on phenotype_trait contains chromosome positions (e.g. "1-59904011"), NOT phenotype names. Never FILTER gnt:locus for trait names like "liver_weight". Instead link trait -> has_phenotype -> phenotype and filter gnt:abbreviation.
+9. gnt:symbol is for probesets. gnt:gene_symbol is for genes and strains.
+10. Datasets are dcat:Dataset. They have dct:title, gnt:has_strain, gnt:has_tissue_info, gnt:has_samples, gnt:has_summary, gnt:has_citation, gnt:has_contributors, gnt:has_case_info, gnt:has_platform_info, gnt:has_specifics, gnt:has_data_processing_info, gnt:has_experiment_design, gnt:has_experiment_type, gnt:has_genotype_files.
+11. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+12. Gene chips / platforms are skos:Concept with skos:inScheme gnc:gene_chip. They have gnt:has_go_tree_value, gnt:has_geo_series_id.
+13. Mapping methods and averaging methods are skos:Concept in gnc:mapping_method and gnc:avg_method schemes.
+14. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
+15. Leverage as many schema hints as possible.
+16. To extract information about a specific trait, find the closest matches in SNAPSHOT_OBJECTS and use them to infer the proper RDF subject for the trait.
+17. To get trait page or URL, use the predicate `gnt:has_trait_page` with the trait as subject. Its object correspond to the URL. Never build trait URLs manually.
+18. To get publication for a trait, search for object having the predicate `dcterms:references` and the trait as subject.
+19. To get highest LOD score and corresponding marker and additive effect, use the predicates `gnt:lod_score`, `gnt:locus`, and `gnt:additive`, respectively.
+20. Mean trait measurements can be accessed by looking up object with predicate gnt:mean and the trait as subject.
+21. Trait descriptions can be accessed via the predicate `dcterms:description`
+22. When you have the description of a trait, you should use regex pattern in the object term with the predicate `dcterms:description` to find the corresponding trait (subject).
+
 When querying SPARQL, prefer fast, efficient SPARQL SELECT queries
 that avoid Virtuoso timeouts (504 errors).
 
