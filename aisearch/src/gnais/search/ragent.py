@@ -7,6 +7,7 @@ __all__ = (
 )
 
 import asyncio
+import time
 from functools import lru_cache, partial
 from typing import Any
 from typing_extensions import TypedDict
@@ -121,6 +122,7 @@ _agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
 async def _stream_component(
     source: str, search_func: Any, queue: asyncio.Queue, **kwargs
 ) -> None:
+    start = time.monotonic()
     try:
         async for chunk in search_func(**kwargs):
             if isinstance(chunk, dict) and "final" in chunk:
@@ -138,6 +140,10 @@ async def _stream_component(
     except Exception as exc:
         await queue.put(StreamEvent(source=source, kind="error", content=str(exc)))
     finally:
+        elapsed = time.monotonic() - start
+        await queue.put(
+            StreamEvent(source=source, kind="timing", content=f"{elapsed:.2f}s")
+        )
         await queue.put(StreamEvent(source=source, kind="done", content=""))
 
 
@@ -147,6 +153,7 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     Yields :class:`StreamEvent` dicts for progress from each component,
     followed by a final synthesis event with ``source="hybrid"``.
     """
+    total_start = time.monotonic()
     queue: asyncio.Queue = asyncio.Queue()
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
 
@@ -186,4 +193,6 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     if not has_chunks and synthesis_text:
         yield StreamEvent(source="synthesis", kind="chunk", content=synthesis_text)
 
+    total_elapsed = time.monotonic() - total_start
+    yield StreamEvent(source="hybrid", kind="timing", content=f"{total_elapsed:.2f}s")
     yield StreamEvent(source="hybrid", kind="final", content=synthesis_text)

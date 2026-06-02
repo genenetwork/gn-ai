@@ -263,6 +263,26 @@ body {
     align-items: center;
 }
 
+.stream-stage-meta,
+.stream-final-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.stream-stage-timing,
+.stream-final-timing {
+    font-family: "SFMono-Regular", "Menlo", "Consolas", monospace;
+    font-size: 0.75rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.stream-final-timing {
+    font-weight: 600;
+    color: var(--accent);
+}
+
 .stream-stage-name {
     font-size: 0.95rem;
     font-weight: 700;
