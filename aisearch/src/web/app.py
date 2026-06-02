@@ -216,6 +216,13 @@ async def search_stream():
                     )
                     continue
 
+                if source in {"rag", "grag", "agent"} and kind == "timing":
+                    yield _format_sse(
+                        f"{source}_timing",
+                        escape(content),
+                    )
+                    continue
+
                 if source in {"rag", "grag", "agent"} and kind == "error":
                     yield _format_sse(
                         f"{source}_chunk",
@@ -256,6 +263,13 @@ async def search_stream():
 
                 if source == "synthesis" and kind == "chunk":
                     yield _format_sse("synthesis_chunk", content)
+                    continue
+
+                if source == "hybrid" and kind == "timing":
+                    yield _format_sse(
+                        "total_timing",
+                        f"Total: {escape(content)}",
+                    )
                     continue
 
                 if source == "hybrid" and kind == "final":
