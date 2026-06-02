@@ -240,7 +240,21 @@ CRITICAL PERFORMANCE RULES (to prevent 504s):
     )
 
 
-_translate_query = dspy.Predict(QueryTranslation)
+_COMPILED_QUERY_PATH = os.environ.get("COMPILED_QUERY_PATH")
+_CACHED_TRANSLATOR = None
+
+
+def _get_translate_query():
+    """Return a compiled QueryTranslation predictor if available, else the default."""
+    global _CACHED_TRANSLATOR
+    if _CACHED_TRANSLATOR is not None:
+        return _CACHED_TRANSLATOR
+    if _COMPILED_QUERY_PATH and os.path.exists(_COMPILED_QUERY_PATH):
+        _CACHED_TRANSLATOR = dspy.Predict(QueryTranslation)
+        _CACHED_TRANSLATOR.load(_COMPILED_QUERY_PATH)
+    else:
+        _CACHED_TRANSLATOR = dspy.Predict(QueryTranslation)
+    return _CACHED_TRANSLATOR
 
 
 async def sparql_fetch(
@@ -270,7 +284,7 @@ async def sparql_fetch(
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query: str) -> Any:
         schema_hint = build_schema_hint(sparql_uri)
-        pred = _translate_query(
+        pred = _get_translate_query()(
             original_query=query,
             schema_hint=schema_hint,
         )
