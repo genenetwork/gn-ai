@@ -49,7 +49,7 @@ def _get_stream_react(sparql_url: str) -> Any:
             dspy.ReAct(
                 signature=AgentSig,
                 tools=tools,
-                max_iters=5,
+                max_iters=7,
             ),
             stream_listeners=[
                 dspy.streaming.StreamListener(
