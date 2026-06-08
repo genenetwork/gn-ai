@@ -79,7 +79,7 @@ _MEMORY = Memory(config=MemoryConfig(
         "config": {
             "model": Config.MEMORY_MODEL,
             "temperature": 0.5,
-            "max_tokens": 2_000,
+            "max_tokens": 100_000,
             "api_key": Config.API_KEY,
         },
     },
