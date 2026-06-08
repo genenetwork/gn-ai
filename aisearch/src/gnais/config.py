@@ -24,6 +24,10 @@ class Config:
     if MODEL_NAME is None:
         raise RuntimeError("MODEL_NAME is not set")
 
+    MEMORY_MODEL = os.environ.get("MEMORY_MODEL")
+    if MEMORY_MODEL is None:
+        raise RuntimeError("MEMORY_MODEL is not set")
+
     MODEL_TYPE = int(os.environ.get("MODEL_TYPE"))
     if MODEL_TYPE is None:
         raise RuntimeError("MODEL_TYPE is not set")
