@@ -111,6 +111,11 @@ GROUP BY ?subject ?predicate ?stem
     object_props = _bindings(results["object"], "p")
     snapshot_objs = _bindings(results["snapshot"], "o")
 
+    # Cap sizes so the prompt doesn't bloat to thousands of tokens
+    literal_props = set(list(literal_props)[:100])
+    object_props = set(list(object_props)[:100])
+    snapshot_objs = set(list(snapshot_objs)[:50])
+
     return literal_props, object_props, snapshot_objs
 
 
