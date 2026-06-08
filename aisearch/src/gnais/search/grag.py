@@ -74,7 +74,7 @@ SELECT ?gene ?symbol FROM <http://rdf.genenetwork.org/v1> WHERE {
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     keywords: str = dspy.OutputField(desc="Comma-separated essential keywords from the query")
     sparql_queries: list[str] = dspy.OutputField(
-        desc="Top 10 valid SPARQL SELECT queries with PREFIX declarations."
+        desc="Top 15 valid SPARQL SELECT queries with PREFIX declarations."
     )
 
 
