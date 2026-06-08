@@ -1,4 +1,4 @@
- """Script for performance evaluation of GN AI systems using mere averaging"""
+"""Script for performance evaluation of GN AI systems using mere averaging"""
 
 import argparse
 import asyncio
@@ -78,7 +78,7 @@ def mark(
 def run_eval(
     runner: Any,
     evaluation_set: list[dspy.Example],
-) -> dict[str, float] :
+) -> dict[str, float]:
     precisions, recalls, f1s = [], [], []
     for example in evaluation_set:
         query = example.get("query")
@@ -88,8 +88,13 @@ def run_eval(
         precisions.append(precision)
         recalls.append(recall)
         f1s.append(f1)
-    metrics = {"precision": np.mean(precisions).item(), "recall": np.mean(recalls).item(), "f1": np.mean(f1s).item()}
+    metrics = {
+        "precision": np.mean(precisions).item(),
+        "recall": np.mean(recalls).item(),
+        "f1": np.mean(f1s).item(),
+    }
     return metrics
+
 
 def make_program(
     search_func: Any,
