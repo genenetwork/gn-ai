@@ -77,7 +77,7 @@ _MEMORY = Memory(config=MemoryConfig(
     llm={
         "provider": "litellm",
         "config": {
-            "model": "moonshot/kimi-k2-0711-preview",
+            "model": Config.MEMORY_MODEL,
             "temperature": 0.5,
             "max_tokens": 2_000,
             "api_key": Config.API_KEY,
