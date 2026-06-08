@@ -57,7 +57,7 @@ LLM_CONFIG = {
 if not app.config.get("MODEL_TYPE"):
     LLM_CONFIG["api_base"] = "http://localhost:7501/v1"
     LLM_CONFIG["model_type"] = "chat"
-    LLM_CONFIG["n_ctx"] = 10_000
+    LLM_CONFIG["n_ctx"] = 100_000
     LLM_CONFIG["seed"] = 2_025
 
 
