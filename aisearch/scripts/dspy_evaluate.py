@@ -1,4 +1,4 @@
-"""Script for performance evaluation of GN AI systems"""
+ """Script for performance evaluation of GN AI systems using DSPy.Evaluate and custom decision function"""
 
 import argparse
 import asyncio
