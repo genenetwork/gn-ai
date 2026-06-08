@@ -49,8 +49,8 @@ if torch.cuda.is_available():
 LLM_CONFIG = {
     "model": app.config["MODEL_NAME"] if app.config.get("MODEL_NAME") else f"openai/{app.config['MODEL_NAME']}",
     "api_key": app.config["API_KEY"] if app.config.get("MODEL_NAME") else "local",
-    "max_tokens": 10_000,
-    "temperature": 0,
+    "max_tokens": 20_000,
+    "temperature": 0.5,
     "verbose": False
 }
 
