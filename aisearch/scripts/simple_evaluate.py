@@ -64,7 +64,7 @@ def mark(
     fn_score = assess(question=fn_question).get("answer")
 
     print(
-        f"Question: {query}\nTrue answer: {true_response}\nAI answer: {generated_response.get('answer')}"
+        f"Question: {query}\nTrue answer: {true_response}\nAI answer: {generated_response}"
     )
     print(f"TP: {tp_score}\nFP: {fp_score}\nFN: {fn_score}")
 
