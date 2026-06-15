@@ -5,9 +5,13 @@ import uuid
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
+import quart
+
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
-from quart import Quart, jsonify, request, render_template, Response, session
+from quart import Quart, jsonify, request, render_template, Response, session, url_for, redirect, flash
+from quart.typing import ResponseReturnValue
+from quart_auth import AuthUser, current_user, login_required, login_user, logout_user, QuartAuth, Unauthorized
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -22,11 +26,16 @@ from markupsafe import escape
 app = Quart(__name__)
 app.config.from_object(Config)
 
+# Basic Login
+app.secret_key = Config.SECRET_KEY
+QuartAuth(app)
+
 # Set up template and static directories
 template_dir = os.path.join(os.path.dirname(__file__), "templates")
 app.template_folder = template_dir
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 app.static_folder = static_dir
+
 
 limiter = Limiter(
     get_remote_address,
@@ -130,8 +139,34 @@ def _stream_final_status_markup(message: str, tone: str = "waiting") -> str:
         "</div>"
     )
 
+@app.route("/login", methods=["GET", "POST"])
+async def login():
+    # KLUDGE: Set a static password for now to prevent token abuse
+    # from non-GN testers.
+    users = {"test@balg-qa.genenetwork.org": os.environ.get("USER_PASS")}
+    if quart.request.method == "GET":
+        return await render_template("login.html")
+    form = await request.form
+    email, password = form.get("email"), form.get("password")
+
+    if email in users and users[email] == password:
+        login_user(AuthUser(email))
+        return redirect(url_for("index"))
+
+    flash("Set the correct user/password")
+    return redirect(url_for("login"))
+
+@app.route('/logout')
+async def logout():
+    logout_user()
+    return 'Logged out'
+
+@app.errorhandler(Unauthorized)
+async def redirect_to_login(*_: Exception) -> ResponseReturnValue:
+    return redirect(url_for("login"))
 
 @app.route("/")
+@login_required
 async def index():
     """Serve the AI search web interface."""
     return await render_template("index.html")
@@ -139,6 +174,7 @@ async def index():
 
 @app.route("/search/stream-shell", methods=["GET"])
 @limiter.limit("300 per day")
+@login_required
 async def search_stream_shell():
     """Shell endpoint that returns the streaming message container."""
     query = request.args.get("q", "").strip()
@@ -153,6 +189,7 @@ async def search_stream_shell():
 
 @app.route("/search/stream", methods=["GET"])
 @limiter.limit("300 per day")
+@login_required
 async def search_stream():
     """SSE endpoint for live hybrid search updates."""
     query = request.args.get("q", "").strip()
