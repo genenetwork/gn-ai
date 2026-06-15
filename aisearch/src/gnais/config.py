@@ -49,4 +49,6 @@ class Config:
     if AUTH_SERVER_URL is None:
         raise RuntimeError("AUTH_SERVER_URL is not set")
 
-    SECRET_KEY = os.environ.get("AUTH_SERVER_URL")
+    SECRET_KEY = os.environ.get("SECRET_KEY")
+    if SECRET_KEY is None:
+        raise RuntimeError("SECRET_KEY is not set")
