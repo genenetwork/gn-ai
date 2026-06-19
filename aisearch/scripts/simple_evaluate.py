@@ -267,7 +267,7 @@ if __name__ == "__main__":
         for n in range(N_ITERATIONS):
             print(f"Iteration {n+1}")
             system_metrics = run_eval(make_program(system), evaluation_set)
-            collection[f"{system_name}_{n}"] = system_metrics
+            collection[f"{system_name} {n}"] = system_metrics
         print(f"Evaluation completed for {system_name}")
     final = pd.DataFrame(collection)
     final.to_csv(OUTPUT_PATH)
