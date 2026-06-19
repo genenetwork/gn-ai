@@ -67,9 +67,10 @@ def mark(
     )
     print(f"TP: {tp_score}\nFP: {fp_score}\nFN: {fn_score}")
 
-    precision = tp_score / (tp_score + fp_score)
-    recall = tp_score / (tp_score + fn_score)
-    f1 = (2 * tp_score) / ((2 * tp_score) + fp_score + fn_score)
+    tiny_term = 1e-10
+    precision = tp_score / (tp_score + fp_score + tiny_term)
+    recall = tp_score / (tp_score + fn_score + tiny_term)
+    f1 = (2 * tp_score) / ((2 * tp_score) + fp_score + fn_score + tiny_term)
 
     return precision, recall, f1
 
