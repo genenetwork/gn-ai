@@ -163,7 +163,7 @@ if __name__ == "__main__":
             max_tokens=10_000,
             n_ctx=10_000,
             seed=2_025,
-            temperature=0,
+            temperature=1,
             cache=False,
             verbose=False,
         )
@@ -173,7 +173,7 @@ if __name__ == "__main__":
             MODEL_NAME,
             api_key=API_KEY,
             max_tokens=10_000,
-            temperature=0,
+            temperature=1,
             cache=False,
             verbose=False,
         )
