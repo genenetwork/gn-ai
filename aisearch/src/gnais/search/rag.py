@@ -6,7 +6,6 @@ from typing import Any
 import dspy
 from gnais.search.tools import with_memory
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
-from typing import Any
 
 
 class RAG(dspy.Signature):
@@ -50,15 +49,20 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
     )
 
 
-_RAG_STREAM = dspy.streamify(
-    dspy.Predict(RAG),
-    stream_listeners=[
-        dspy.streaming.StreamListener(
-            signature_field_name="feedback", allow_reuse=True
-        )
-    ],
-    include_final_prediction_in_output_stream=True,
-)
+def _rag_stream(lm=None):
+    predictor = dspy.Predict(RAG)
+    if lm is not None:
+        predictor.lm = lm
+    return dspy.streamify(
+        predictor,
+        stream_listeners=[
+            dspy.streaming.StreamListener(
+                signature_field_name="feedback", allow_reuse=True
+            )
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
+
 
 @with_memory(memory_type="rag")
 async def rag_search(
@@ -68,12 +72,13 @@ async def rag_search(
     user_id: str = "default_user",
     memory=None,
     chat_history: list = [],
+    lm=None,
 ):
     prompt = f"{system_prompt}\nQuery: {query}"
     yield {"status": "Fetching context…"}
     context = await asyncio.to_thread(retriever.invoke, query)
     yield {"status": "Streaming response…"}
-    async for value in _RAG_STREAM(
+    async for value in _rag_stream(lm)(
             input_text=prompt,
             chat_history=chat_history,
             context=context,

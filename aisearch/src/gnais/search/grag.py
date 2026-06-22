@@ -87,15 +87,24 @@ class GraphRAG(dspy.Signature):
     )
 
 
-_KW_SPARQL_GEN = dspy.Predict(KeywordSPARQLGenerator)
+def _kw_sparql_gen(lm=None):
+    predictor = dspy.Predict(KeywordSPARQLGenerator)
+    if lm is not None:
+        predictor.lm = lm
+    return predictor
 
-_GRAG_STREAM = dspy.streamify(
-    dspy.Predict(GraphRAG),
-    stream_listeners=[
-        dspy.streaming.StreamListener(signature_field_name="feedback")
-    ],
-    include_final_prediction_in_output_stream=True,
-)
+
+def _grag_stream(lm=None):
+    predictor = dspy.Predict(GraphRAG)
+    if lm is not None:
+        predictor.lm = lm
+    return dspy.streamify(
+        predictor,
+        stream_listeners=[
+            dspy.streaming.StreamListener(signature_field_name="feedback")
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 @with_memory(memory_type="grag")
@@ -106,6 +115,7 @@ async def graph_rag_search(
     memory=None,
     user_id: str = "default_user",
     chat_history: list = [],
+    lm=None,
 ):
     grag_prompt = f"{system_prompt}\nQuery: {query}"
     sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}"
@@ -115,7 +125,7 @@ async def graph_rag_search(
     combined = await loop.run_in_executor(
         tools.LLM_EXECUTOR,
         functools.partial(
-            _KW_SPARQL_GEN,
+            _kw_sparql_gen(lm),
             original_query=sparql_prompt,
             schema_hint=schema_hint,
         ),
@@ -132,7 +142,7 @@ async def graph_rag_search(
     sparql_results = await sparql_fetch(sparql_queries, sparql_url)
 
     yield {"status": "Streaming response…"}
-    async for value in _GRAG_STREAM(
+    async for value in _grag_stream(lm)(
         original_query=grag_prompt,
         sparql_results=sparql_results,
         chat_history=chat_history,

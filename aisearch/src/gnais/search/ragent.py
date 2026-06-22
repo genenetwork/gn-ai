@@ -42,7 +42,7 @@ CRITICAL – URL SAFETY RULES (prevents hallucination):
 2. Only use URLs that appear verbatim in the `all_generation` input.
 3. Before outputting, verify: every `href` attribute value must be an exact substring
    of the `all_generation` string. If you cannot verify, omit the link.
-4. Do not append, prepend, or modify URL fragments (e.g., no `#`, `?`, or path changes).
+4. Do not append, prepend, or modify URL fragments (e.g. no `#`, `?`, or path changes).
 
 Structure the HTML as follows:
 - A short status banner (<div class="status-success"> or "status-partial">).
@@ -66,13 +66,18 @@ Structure the HTML as follows:
     )
 
 
-_synthesize = dspy.streamify(
-    dspy.Predict(Synthesis),
-    stream_listeners=[
-        dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
-    ],
-    include_final_prediction_in_output_stream=True,
-)
+def _synthesize(lm=None):
+    predictor = dspy.Predict(Synthesis)
+    if lm is not None:
+        predictor.lm = lm
+    return dspy.streamify(
+
+        predictor,
+        stream_listeners=[
+            dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 # KLUDGE: Creating the retrievers takes the longest time.  Here, we
@@ -92,11 +97,11 @@ _SEM_RETRIEVER = create_ensemble_retriever(
 )
 
 
-async def _rag_search(query: str, user_id: str = "default_user", memory=None):
+async def _rag_search(query: str, user_id: str = "default_user", memory=None, lm=None):
     yield {"status": "Classifying search type…"}
     loop = asyncio.get_running_loop()
     classification = await loop.run_in_executor(
-        tools.LLM_EXECUTOR, classify_search, query
+        tools.LLM_EXECUTOR, classify_search, query, lm
     )
     yield {"status": f"Search type is: '{classification.get('decision')}'"}
     retriever = (
@@ -105,18 +110,26 @@ async def _rag_search(query: str, user_id: str = "default_user", memory=None):
         else _SEM_RETRIEVER
     )
     yield {"status": "Retrieving documents…"}
-    async for item in rag_search(query=query, retriever=retriever, user_id=user_id, memory=memory):
+    async for item in rag_search(query=query, retriever=retriever, user_id=user_id, memory=memory, lm=lm):
         yield item
 
 
-async def _grag_search(query: str, user_id: str = "default_user", memory=None):
+async def _grag_search(query: str, user_id: str = "default_user", memory=None, lm=None):
     async for chunk in graph_rag_search(
-        query=query, sparql_url=Config.SPARQL_ENDPOINT, memory=memory, user_id=user_id
+        query=query, sparql_url=Config.SPARQL_ENDPOINT, memory=memory, user_id=user_id, lm=lm
     ):
         yield chunk
 
 
-_agent_search = partial(agent_search, sparql_url=Config.SPARQL_ENDPOINT)
+async def _agent_search(query: str, user_id: str = "default_user", memory=None, lm=None):
+    async for chunk in agent_search(
+        query=query,
+        sparql_url=Config.SPARQL_ENDPOINT,
+        memory=memory,
+        user_id=user_id,
+        lm=lm,
+    ):
+        yield chunk
 
 
 async def _stream_component(
@@ -147,7 +160,7 @@ async def _stream_component(
         await queue.put(StreamEvent(source=source, kind="done", content=""))
 
 
-async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
+async def hybrid_search(query: str, user_id: str = "default_user", memory=None, lm=None):
     """Run hybrid search with concurrent RAG, GraphRAG, and Agent.
 
     Yields :class:`StreamEvent` dicts for progress from each component,
@@ -158,9 +171,9 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(_stream_component("rag", _rag_search, queue, query=query, user_id=user_id, memory=memory))
-        tg.create_task(_stream_component("grag", _grag_search, queue, query=query, user_id=user_id, memory=memory))
-        tg.create_task(_stream_component("agent", _agent_search, queue, query=query, user_id=user_id, memory=memory))
+        tg.create_task(_stream_component("rag", _rag_search, queue, query=query, user_id=user_id, memory=memory, lm=lm))
+        tg.create_task(_stream_component("grag", _grag_search, queue, query=query, user_id=user_id, memory=memory, lm=lm))
+        tg.create_task(_stream_component("agent", _agent_search, queue, query=query, user_id=user_id, memory=memory, lm=lm))
 
         remaining = 3
         while remaining:
@@ -181,7 +194,7 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
 
     synthesis_text = ""
     has_chunks = False
-    async for value in _synthesize(original_query=query, all_generation=messages):
+    async for value in _synthesize(lm)(original_query=query, all_generation=messages):
         if isinstance(value, dspy.Prediction):
             synthesis_text = value.feedback
         else:
