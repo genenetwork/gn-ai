@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>GeneNetwork AI Search – Settings</title>
+        <script src="https://unpkg.com/htmx.org@2.0.8"></script>
+        <script src="https://unpkg.com/htmx-ext-sse@2.2.4/sse.js"></script>
+        <script src="https://unpkg.com/hyperscript.org@0.9.12"></script>
+        <link rel="stylesheet"
+              href="{{ url_for('static', filename='css/style.css') }}">
+    </head>
+    <body class="login-page">
+        <div class="header">
+            <div class="header-left">
+                <div class="header-logo">GN</div>
+                <div class="header-title">GeneNetwork AI Search</div>
+            </div>
+        </div>
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-brand">
+                    <h1>Choose your model</h1>
+                    <p>Select the AI you would like to use for your search.</p>
+                </div>
+
+                <form method="post" action="/settings" class="login-form" id="settings-form">
+                    <div class="input-group">
+                        <label for="provider">AI model</label>
+                        <select id="provider"
+                                name="provider"
+                                class="login-select"
+                                required
+                                _="on change
+                                     if my value is 'genenetwork'
+                                       remove .hidden from #api-key-help
+                                       add .hidden to #api-key-field
+                                     else
+                                       remove .hidden from #api-key-field
+                                       add .hidden to #api-key-help
+                                     end">
+                            {% for value, label in providers %}
+                                <option value="{{ value }}"
+                                        {% if value == selected %}selected{% endif %}>
+                                    {{ label }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <p class="input-hint {% if selected != 'genenetwork' %}hidden{% endif %}" id="api-key-help">
+                            No API key required
+                        </p>
+                    </div>
+                    <div class="input-group {% if selected == 'genenetwork' %}hidden{% endif %}" id="api-key-field">
+                        <label for="api_key">API key</label>
+                        <input type="password"
+                               id="api_key"
+                               name="api_key"
+                               placeholder="Paste your Anthropic API key"
+                               autocomplete="off">
+                        <p class="input-hint">Your key is stored only for this session.</p>
+                    </div>
+                    <button type="submit" class="btn-primary">Continue</button>
+                </form>
+                <div class="login-footer">
+                    GeneNetwork AI Search
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
