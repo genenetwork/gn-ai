@@ -14,11 +14,12 @@ class Extraction(dspy.Signature):
 
 
 @lru_cache(maxsize=2048)
-def extract_keywords(query: str) -> str:
+def extract_keywords(query: str, lm=None) -> str:
     """Extract list of keywords from query
 
     Args:
         query: user query
+        lm: optional dspy.LM to use for this call
 
     Returns:
         list of keywords
@@ -27,15 +28,16 @@ def extract_keywords(query: str) -> str:
 You are extremely good at extracting keywords from a search query related to specific entities (traits, markers, etc) in GeneNetwork.
 Produce a list of space separated keywords featured in the query below. Only return that list.
 
-{query}""")
+{query}""", lm=lm)
 
 
 @lru_cache(maxsize=2048)
-def classify_search(query: str) -> str:
+def classify_search(query: str, lm=None) -> str:
     """Classify user query as keyword search or semantic search
 
     Args:
         query: user query
+        lm: optional dspy.LM to use for this call
 
     Returns:
         type of search for query processing
@@ -48,4 +50,4 @@ A semantic search is better when the system needs to understand the meaning of t
 Infer the type of search that should be performed given the query below:
 
 {query}
-""")
+""", lm=lm)

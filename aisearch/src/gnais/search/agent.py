@@ -38,29 +38,28 @@ clear final answer, but all content must remain valid HTML."""
     )
 
 
-_STREAM_REACT_CACHE: dict[str, Any] = {}
-
-
-def _get_stream_react(sparql_url: str) -> Any:
-    """Return a cached (or freshly built) streaming ReAct agent."""
-    if sparql_url not in _STREAM_REACT_CACHE:
-        tools = [make_sparql_fetch_tool(sparql_url), check_link]
-        _STREAM_REACT_CACHE[sparql_url] = dspy.streamify(
-            dspy.ReAct(
-                signature=AgentSig,
-                tools=tools,
-                max_iters=7,
+def _get_stream_react(sparql_url: str, lm=None) -> Any:
+    """Return a streaming ReAct agent configured with the given LM."""
+    tools = [make_sparql_fetch_tool(sparql_url), check_link]
+    react = dspy.ReAct(
+        signature=AgentSig,
+        tools=tools,
+        max_iters=7,
+    )
+    if lm is not None:
+        # Propagate the LM to all internal predictors.
+        react.set_lm(lm)
+    return dspy.streamify(
+        react,
+        stream_listeners=[
+            dspy.streaming.StreamListener(
+                signature_field_name="next_thought",
+                allow_reuse=True,
             ),
-            stream_listeners=[
-                dspy.streaming.StreamListener(
-                    signature_field_name="next_thought",
-                    allow_reuse=True,
-                ),
-                dspy.streaming.StreamListener(signature_field_name="solution"),
-            ],
-            include_final_prediction_in_output_stream=True,
-        )
-    return _STREAM_REACT_CACHE[sparql_url]
+            dspy.streaming.StreamListener(signature_field_name="solution"),
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 @with_memory(memory_type="agent")
@@ -71,13 +70,14 @@ async def agent_search(
     user_id: str = "default_user",
     memory=None,
     chat_history: list = [],
+    lm=None,
 ):
     """Run agent-based search with SPARQL tool calling and optional memory.
 
     Yields stream chunks and a final prediction dict.
     """
     yield {"status": "Planning search strategy…"}
-    stream_react = _get_stream_react(sparql_url)
+    stream_react = _get_stream_react(sparql_url, lm)
     yield {"status": "Streaming response…"}
     async for value in stream_react(
         query=f"{system_prompt}\nQuery: {query}",

@@ -134,39 +134,61 @@ async def _set_default_executor():
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
 
-#  Shared mem0 memory instance (loaded once at server startup)
-_MEMORY = Memory(config=MemoryConfig(
-    custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
-    custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
-    llm={
-        "provider": "litellm",
-        "config": {
-            "model": Config.MEMORY_MODEL,
-            "temperature": 0.5,
-            "max_tokens": 100_000,
-            "api_key": Config.API_KEY,
-        },
-    },
-    embedder={
-        "provider": "huggingface",
-        "config": {
-            "model": "Qwen/Qwen3-Embedding-0.6B",
-            "embedding_dims": 1024,
-            "model_kwargs": {
-                "trust_remote_code": True,
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
+def _build_memory(api_key: str) -> Memory:
+    """Create a mem0 Memory instance backed by Claude Haiku."""
+    return Memory(config=MemoryConfig(
+        custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+        custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
+        llm={
+            "provider": "anthropic",
+            "config": {
+                "model": "claude-haiku-4-5-20251001",
+                "temperature": 0.5,
+                "max_tokens": 2_000,
+                "api_key": api_key,
             },
         },
-    },
-    vector_store={
-        "provider": "chroma",
-        "config": {
-            "collection_name": "mem0",
-            "host": "localhost",
-            "port": 8001,
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
+            },
         },
-    },
-))
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "host": "localhost",
+                "port": 8001,
+            },
+        },
+    ))
+
+
+# One mem0 Memory instance per authenticated session.  Each tuple keeps
+# the Memory object together with the API key it was created with so we
+# can recreate it only when the key changes.
+_session_memories: dict[str, tuple[Memory, str]] = {}
+
+
+async def _get_session_memory(user_id: str) -> Memory:
+    """Return the mem0 Memory for a session, creating it once per session."""
+    api_key = await _get_user_api_key(user_id) or Config.API_KEY
+    if not api_key:
+        raise ValueError("An Anthropic API key is required for session memory")
+
+    existing = _session_memories.get(user_id)
+    if existing is not None and existing[1] == api_key:
+        return existing[0]
+
+    memory = _build_memory(api_key)
+    _session_memories[user_id] = (memory, api_key)
+    return memory
 
 def _format_sse(event: str, data: str) -> str:
     lines = data.splitlines() or [""]
@@ -216,6 +238,7 @@ async def login():
 async def logout():
     if current_user.is_authenticated:
         await _delete_user_api_key(current_user.auth_id)
+        _session_memories.pop(current_user.auth_id, None)
     logout_user()
     return redirect(url_for("login"))
 
@@ -330,6 +353,7 @@ async def search_stream():
     provider = session.get("llm_provider", "genenetwork")
     model_name, api_key = await _resolve_provider(provider, current_user.auth_id)
     configure_lm(_LM, api_key, model_name)
+    session_memory = await _get_session_memory(current_user.auth_id)
 
     async def event_stream():
         completed = set()
@@ -341,7 +365,7 @@ async def search_stream():
             _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
         )
         try:
-            async for event in hybrid_search(query, user_id=user_id, memory=_MEMORY):
+            async for event in hybrid_search(query, user_id=user_id, memory=session_memory, lm=_LM):
                 if final_sent:
                     break
 
