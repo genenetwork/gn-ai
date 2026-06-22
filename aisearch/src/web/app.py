@@ -152,15 +152,15 @@ async def login():
 
     if email in users and users[email] == password:
         login_user(AuthUser(email))
-        return redirect(url_for("index"))
+        return redirect(url_for("settings"))
 
-    flash("Set the correct user/password")
+    await flash("Set the correct user/password")
     return redirect(url_for("login"))
 
 @app.route('/logout')
 async def logout():
     logout_user()
-    return 'Logged out'
+    return redirect(url_for("login"))
 
 @app.errorhandler(Unauthorized)
 async def redirect_to_login(*_: Exception) -> ResponseReturnValue:
