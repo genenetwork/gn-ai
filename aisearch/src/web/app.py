@@ -6,6 +6,7 @@ import quart_flask_patch  # noqa: F401
 import dspy
 import torch
 import quart
+import requests
 
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
@@ -17,6 +18,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.search.ragent import hybrid_search
+from web.settings import call_claude
 from gnais.search.prompts import (
     GN_FACT_EXTRACTION_PROMPT,
     GN_UPDATE_MEMORY_PROMPT,
@@ -185,8 +187,17 @@ async def settings():
         )
 
     form = await request.form
-    session["llm_provider"] = form.get("provider", "genenetwork")
+    provider = form.get("provider", "genenetwork")
     api_key = form.get("api_key", "").strip()
+
+    if provider != "genenetwork":
+        try:
+            call_claude(api_key)
+        except requests.exceptions.RequestException as exc:
+            await flash(f"Invalid API key or Anthropic request failed: {exc}")
+            return redirect(url_for("settings"))
+
+    session["llm_provider"] = provider
     if api_key:
         session["llm_api_key"] = api_key
     else:

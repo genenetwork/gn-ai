@@ -24,6 +24,14 @@
                     <p>Select the AI you would like to use for your search.</p>
                 </div>
 
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="error-message">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
                 <form method="post" action="/settings" class="login-form" id="settings-form">
                     <div class="input-group">
                         <label for="provider">AI model</label>
