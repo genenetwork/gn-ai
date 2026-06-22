@@ -1,7 +1,10 @@
 import requests
 
 
-def call_claude(api_key=API_KEY):
+def call_claude(api_key):
+    """Validate an Anthropic API key with a tiny test request."""
+    if not api_key:
+        raise requests.exceptions.RequestException("API key is missing")
     url = "https://api.anthropic.com/v1/messages"
     headers = {
         "x-api-key": api_key,
