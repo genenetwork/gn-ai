@@ -14,7 +14,10 @@
         <div class="header">
             <div class="header-left">
                 <div class="header-logo">GN</div>
-                <div class="header-title">GeneNetwork AI Search</div>
+                <div class="header-title">
+                    GeneNetwork AI Search
+                    <span class="header-model-badge">{{ model_label }}</span>
+                </div>
             </div>
             <div class="header-actions">
                 <a href="/settings" class="header-action" title="Model settings" aria-label="Model settings">
@@ -113,6 +116,7 @@
                 </button>
             </form>
             <div class="char-counter" id="char-counter">0 / 1000</div>
+            <div class="input-model">Model: {{ model_label }}</div>
         </div>
         <button id="scroll-to-bottom" class="scroll-to-bottom-btn" title="Scroll to bottom">↓</button>
 
