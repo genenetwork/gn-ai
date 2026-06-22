@@ -166,6 +166,34 @@ async def logout():
 async def redirect_to_login(*_: Exception) -> ResponseReturnValue:
     return redirect(url_for("login"))
 
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+async def settings():
+    """Let the user pick the LLM provider and set an API key."""
+    providers = [
+        ("genenetwork", "GeneNetwork"),
+        ("claude-opus", "Claude Opus"),
+        ("claude-haiku", "Claude Haiku"),
+    ]
+
+    if quart.request.method == "GET":
+        selected = session.get("llm_provider", "genenetwork")
+        return await render_template(
+            "settings.html",
+            providers=providers,
+            selected=selected,
+        )
+
+    form = await request.form
+    session["llm_provider"] = form.get("provider", "genenetwork")
+    api_key = form.get("api_key", "").strip()
+    if api_key:
+        session["llm_api_key"] = api_key
+    else:
+        session.pop("llm_api_key", None)
+
+    return redirect(url_for("index"))
+
 @app.route("/")
 @login_required
 async def index():
