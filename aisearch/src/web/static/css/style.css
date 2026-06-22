@@ -105,6 +105,21 @@ body {
     font-weight: 700;
     letter-spacing: 0.02em;
     color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.header-model-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #ddd;
+    background: rgba(255, 255, 255, 0.12);
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .chat-container {
@@ -869,6 +884,16 @@ body {
 
 .char-counter.warning {
     color: #e53935;
+}
+
+.input-model {
+    max-width: 768px;
+    width: 100%;
+    margin: 0.35rem auto 0;
+    text-align: right;
+    font-size: 0.75rem;
+    color: var(--muted);
+    padding-right: 0.75rem;
 }
 
 .copy-btn {
