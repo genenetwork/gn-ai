@@ -45,12 +45,46 @@ body {
     padding: 1rem 1.4rem;
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 1rem;
     background: #222;
     border-bottom: 1px solid #080808;
     position: sticky;
     top: 0;
     z-index: 20;
+}
+
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.header-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+    color: #fff;
+    background: transparent;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+.header-action:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+}
+
+.header-action svg {
+    pointer-events: none;
 }
 
 .header-logo {
@@ -901,6 +935,147 @@ body {
     color: #a94442;
 }
 
+/* === Login page shared styles === */
+
+.login-page {
+    background: var(--bg-accent);
+    align-items: center;
+    justify-content: center;
+}
+
+.login-page .header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+.login-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 1.5rem;
+    margin-top: 4rem;
+}
+
+.login-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-xl);
+    padding: 2.2rem 2rem;
+    box-shadow:
+        0 2px 12px rgba(0, 0, 0, 0.06),
+        0 0 0 1px rgba(0, 0, 0, 0.02);
+}
+
+.login-brand {
+    text-align: center;
+    margin-bottom: 1.8rem;
+}
+
+.login-brand h1 {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    margin-bottom: 0.35rem;
+}
+
+.login-brand p {
+    color: var(--muted);
+    font-size: 0.98rem;
+}
+
+.login-form .input-group {
+    margin-bottom: 1.25rem;
+}
+
+.login-form label {
+    display: block;
+    color: var(--text);
+    font-size: 0.88rem;
+    font-weight: 600;
+    margin-bottom: 0.4rem;
+}
+
+.login-form input,
+.login-form select {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    color: var(--text);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    outline: none;
+}
+
+.login-form input:focus,
+.login-form select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(48, 113, 169, 0.12);
+}
+
+.login-form input::placeholder {
+    color: #999;
+}
+
+.login-form select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    padding-right: 2.5rem;
+    cursor: pointer;
+}
+
+.login-form .btn-primary {
+    width: 100%;
+    margin-top: 0.5rem;
+    padding: 0.85rem;
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    font-size: 1rem;
+    border: none;
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.login-form .btn-primary:hover {
+    background: var(--accent-strong);
+    transform: translateY(-1px);
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.login-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.login-footer a:hover {
+    text-decoration: underline;
+}
+
+.input-hint {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.4rem;
+    line-height: 1.4;
+}
+
+.hidden {
+    display: none !important;
+}
+
 @media (max-width: 920px) {
     .stream-stage-grid {
         grid-template-columns: 1fr;
@@ -958,5 +1133,13 @@ body {
     .input-wrapper {
         border-radius: 20px;
         padding: 0.4rem 0.5rem 0.4rem 1rem;
+    }
+
+    .login-card {
+        padding: 1.8rem 1.5rem;
+    }
+
+    .login-brand h1 {
+        font-size: 1.9rem;
     }
 }
