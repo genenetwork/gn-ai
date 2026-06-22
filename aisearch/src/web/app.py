@@ -1,11 +1,16 @@
 import asyncio
+import base64
 import concurrent.futures
+import hashlib
 import os
 import uuid
 import quart_flask_patch  # noqa: F401
 import dspy
 import torch
 import quart
+import requests
+
+from cryptography.fernet import Fernet
 
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
@@ -17,6 +22,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.search.ragent import hybrid_search
+from web.settings import call_claude, configure as configure_lm
 from gnais.search.prompts import (
     GN_FACT_EXTRACTION_PROMPT,
     GN_UPDATE_MEMORY_PROMPT,
@@ -70,7 +76,56 @@ if not app.config.get("MODEL_TYPE"):
     LLM_CONFIG["seed"] = 2_025
 
 
-dspy.configure(lm=dspy.LM(**LLM_CONFIG))
+_LM = dspy.LM(**LLM_CONFIG)
+dspy.configure(lm=_LM)
+
+_PROVIDER_MODELS = {
+    "genenetwork": (Config.MODEL_NAME, Config.API_KEY),
+    "claude-opus": ("anthropic/claude-opus-4-6", None),
+    "claude-haiku": ("anthropic/claude-haiku-4-5-20251001", None),
+}
+
+
+def _fernet() -> Fernet:
+    """Build a Fernet cipher from the app's SECRET_KEY."""
+    key = base64.urlsafe_b64encode(hashlib.sha256(app.secret_key.encode()).digest()[:32])
+    return Fernet(key)
+
+
+def _api_key_cache_key(user_id: str) -> str:
+    return f"llm_api_key:{user_id}"
+
+
+async def _get_user_api_key(user_id: str) -> str | None:
+    """Fetch and decrypt the user's API key from the server-side cache."""
+    encrypted = await asyncio.to_thread(cache.get, _api_key_cache_key(user_id))
+    if encrypted is None:
+        return None
+    try:
+        return _fernet().decrypt(encrypted.encode()).decode()
+    except Exception:
+        return None
+
+
+async def _set_user_api_key(user_id: str, api_key: str) -> None:
+    """Encrypt and store the API key server-side with a TTL."""
+    encrypted = _fernet().encrypt(api_key.encode())
+    await asyncio.to_thread(cache.set, _api_key_cache_key(user_id), encrypted.decode(), timeout=86400)
+
+
+async def _delete_user_api_key(user_id: str) -> None:
+    await asyncio.to_thread(cache.delete, _api_key_cache_key(user_id))
+
+
+async def _resolve_provider(provider: str, user_id: str) -> tuple[str, str]:
+    """Return the (model_name, api_key) for a selected provider."""
+    model_name, default_key = _PROVIDER_MODELS.get(provider, _PROVIDER_MODELS["genenetwork"])
+    if provider == "genenetwork":
+        return model_name, default_key or "local"
+    api_key = await _get_user_api_key(user_id) or default_key
+    if not api_key:
+        raise ValueError(f"API key is required for {provider}")
+    return model_name, api_key
 
 
 @app.before_serving
@@ -79,39 +134,61 @@ async def _set_default_executor():
     loop.set_default_executor(concurrent.futures.ThreadPoolExecutor(max_workers=64))
 
 
-#  Shared mem0 memory instance (loaded once at server startup)
-_MEMORY = Memory(config=MemoryConfig(
-    custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
-    custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
-    llm={
-        "provider": "litellm",
-        "config": {
-            "model": Config.MEMORY_MODEL,
-            "temperature": 0.5,
-            "max_tokens": 100_000,
-            "api_key": Config.API_KEY,
-        },
-    },
-    embedder={
-        "provider": "huggingface",
-        "config": {
-            "model": "Qwen/Qwen3-Embedding-0.6B",
-            "embedding_dims": 1024,
-            "model_kwargs": {
-                "trust_remote_code": True,
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
+def _build_memory(api_key: str) -> Memory:
+    """Create a mem0 Memory instance backed by Claude Haiku."""
+    return Memory(config=MemoryConfig(
+        custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+        custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
+        llm={
+            "provider": "anthropic",
+            "config": {
+                "model": "claude-haiku-4-5-20251001",
+                "temperature": 0.5,
+                "max_tokens": 2_000,
+                "api_key": api_key,
             },
         },
-    },
-    vector_store={
-        "provider": "chroma",
-        "config": {
-            "collection_name": "mem0",
-            "host": "localhost",
-            "port": 8001,
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
+            },
         },
-    },
-))
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "host": "localhost",
+                "port": 8001,
+            },
+        },
+    ))
+
+
+# One mem0 Memory instance per authenticated session.  Each tuple keeps
+# the Memory object together with the API key it was created with so we
+# can recreate it only when the key changes.
+_session_memories: dict[str, tuple[Memory, str]] = {}
+
+
+async def _get_session_memory(user_id: str) -> Memory:
+    """Return the mem0 Memory for a session, creating it once per session."""
+    api_key = await _get_user_api_key(user_id) or Config.API_KEY
+    if not api_key:
+        raise ValueError("An Anthropic API key is required for session memory")
+
+    existing = _session_memories.get(user_id)
+    if existing is not None and existing[1] == api_key:
+        return existing[0]
+
+    memory = _build_memory(api_key)
+    _session_memories[user_id] = (memory, api_key)
+    return memory
 
 def _format_sse(event: str, data: str) -> str:
     lines = data.splitlines() or [""]
@@ -139,6 +216,7 @@ def _stream_final_status_markup(message: str, tone: str = "waiting") -> str:
         "</div>"
     )
 
+
 @app.route("/login", methods=["GET", "POST"])
 async def login():
     # KLUDGE: Set a static password for now to prevent token abuse
@@ -151,25 +229,83 @@ async def login():
 
     if email in users and users[email] == password:
         login_user(AuthUser(email))
-        return redirect(url_for("index"))
+        return redirect(url_for("settings"))
 
-    flash("Set the correct user/password")
+    await flash("Set the correct user/password")
     return redirect(url_for("login"))
 
 @app.route('/logout')
 async def logout():
+    if current_user.is_authenticated:
+        await _delete_user_api_key(current_user.auth_id)
+        _session_memories.pop(current_user.auth_id, None)
     logout_user()
-    return 'Logged out'
+    return redirect(url_for("login"))
 
 @app.errorhandler(Unauthorized)
 async def redirect_to_login(*_: Exception) -> ResponseReturnValue:
     return redirect(url_for("login"))
 
+@app.route("/settings", methods=["GET", "POST"])
+@login_required
+async def settings():
+    """Let the user pick the LLM provider and set an API key."""
+    providers = [
+        ("genenetwork", "GeneNetwork"),
+        ("claude-opus", "Claude Opus"),
+        ("claude-haiku", "Claude Haiku"),
+    ]
+
+    if quart.request.method == "GET":
+        selected = session.get("llm_provider", "genenetwork")
+        return await render_template(
+            "settings.html",
+            providers=providers,
+            selected=selected,
+        )
+
+    form = await request.form
+    provider = form.get("provider", "genenetwork")
+    api_key = form.get("api_key", "").strip() or None
+    user_id = current_user.auth_id
+
+    if provider != "genenetwork":
+        if not api_key:
+            await flash("API key is required for Claude models")
+            return redirect(url_for("settings"))
+        try:
+            await asyncio.to_thread(call_claude, api_key)
+        except requests.exceptions.RequestException as exc:
+            await flash(f"Invalid API key or Anthropic request failed: {exc}")
+            return redirect(url_for("settings"))
+        await _set_user_api_key(user_id, api_key)
+    else:
+        await _delete_user_api_key(user_id)
+
+    try:
+        model_name, resolved_key = await _resolve_provider(provider, user_id)
+    except ValueError as exc:
+        await flash(str(exc))
+        return redirect(url_for("settings"))
+
+    configure_lm(_LM, resolved_key, model_name)
+    session["llm_provider"] = provider
+    return redirect(url_for("index"))
+
+_PROVIDER_LABELS = {
+    "genenetwork": "GeneNetwork",
+    "claude-opus": "Claude Opus",
+    "claude-haiku": "Claude Haiku",
+}
+
+
 @app.route("/")
 @login_required
 async def index():
     """Serve the AI search web interface."""
-    return await render_template("index.html")
+    provider = session.get("llm_provider", "genenetwork")
+    model_label = _PROVIDER_LABELS.get(provider, "GeneNetwork")
+    return await render_template("index.html", model_label=model_label)
 
 
 @app.route("/search/stream-shell", methods=["GET"])
@@ -214,6 +350,11 @@ async def search_stream():
         session["user_id"] = str(uuid.uuid4())
         user_id = session["user_id"]
 
+    provider = session.get("llm_provider", "genenetwork")
+    model_name, api_key = await _resolve_provider(provider, current_user.auth_id)
+    configure_lm(_LM, api_key, model_name)
+    session_memory = await _get_session_memory(current_user.auth_id)
+
     async def event_stream():
         completed = set()
         final_sent = False
@@ -224,7 +365,7 @@ async def search_stream():
             _stream_final_status_markup("Waiting for searches to complete…", "waiting"),
         )
         try:
-            async for event in hybrid_search(query, user_id=user_id, memory=_MEMORY):
+            async for event in hybrid_search(query, user_id=user_id, memory=session_memory, lm=_LM):
                 if final_sent:
                     break
 
