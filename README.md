@@ -155,6 +155,16 @@ cp .env.example env  # Update all the variables
 Start a flask development server:
 
 ```
+# Start a chroma db instance for the app:
+chroma run --host localhost --port 8000 --path XXXX/chroma/memory/dev/
+
+# Start a chroma db instance for memory
+chroma run --host localhost --port 8001 --path XXXX/chroma/memory/dev/
+
 cd aisearch
-hypercorn -w 1 -b 0.0.0.0:4000 web.app:app
+
+env USER_PASS="root" hypercorn -w 1 -b 0.0.0.0:4001 web.app:app
+# or
+env USER_PASS="root" quart --app src/web/app.py run --port 4001 --reload
+
 ```
