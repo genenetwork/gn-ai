@@ -1,5 +1,7 @@
 import asyncio
+import base64
 import concurrent.futures
+import hashlib
 import os
 import uuid
 import quart_flask_patch  # noqa: F401
@@ -7,6 +9,8 @@ import dspy
 import torch
 import quart
 import requests
+
+from cryptography.fernet import Fernet
 
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
@@ -18,7 +22,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
 from gnais.search.ragent import hybrid_search
-from web.settings import call_claude
+from web.settings import call_claude, configure as configure_lm
 from gnais.search.prompts import (
     GN_FACT_EXTRACTION_PROMPT,
     GN_UPDATE_MEMORY_PROMPT,
@@ -72,7 +76,56 @@ if not app.config.get("MODEL_TYPE"):
     LLM_CONFIG["seed"] = 2_025
 
 
-dspy.configure(lm=dspy.LM(**LLM_CONFIG))
+_LM = dspy.LM(**LLM_CONFIG)
+dspy.configure(lm=_LM)
+
+_PROVIDER_MODELS = {
+    "genenetwork": (Config.MODEL_NAME, Config.API_KEY),
+    "claude-opus": ("anthropic/claude-opus-4-6", None),
+    "claude-haiku": ("anthropic/claude-haiku-4-5-20251001", None),
+}
+
+
+def _fernet() -> Fernet:
+    """Build a Fernet cipher from the app's SECRET_KEY."""
+    key = base64.urlsafe_b64encode(hashlib.sha256(app.secret_key.encode()).digest()[:32])
+    return Fernet(key)
+
+
+def _api_key_cache_key(user_id: str) -> str:
+    return f"llm_api_key:{user_id}"
+
+
+async def _get_user_api_key(user_id: str) -> str | None:
+    """Fetch and decrypt the user's API key from the server-side cache."""
+    encrypted = await asyncio.to_thread(cache.get, _api_key_cache_key(user_id))
+    if encrypted is None:
+        return None
+    try:
+        return _fernet().decrypt(encrypted.encode()).decode()
+    except Exception:
+        return None
+
+
+async def _set_user_api_key(user_id: str, api_key: str) -> None:
+    """Encrypt and store the API key server-side with a TTL."""
+    encrypted = _fernet().encrypt(api_key.encode())
+    await asyncio.to_thread(cache.set, _api_key_cache_key(user_id), encrypted.decode(), timeout=86400)
+
+
+async def _delete_user_api_key(user_id: str) -> None:
+    await asyncio.to_thread(cache.delete, _api_key_cache_key(user_id))
+
+
+async def _resolve_provider(provider: str, user_id: str) -> tuple[str, str]:
+    """Return the (model_name, api_key) for a selected provider."""
+    model_name, default_key = _PROVIDER_MODELS.get(provider, _PROVIDER_MODELS["genenetwork"])
+    if provider == "genenetwork":
+        return model_name, default_key or "local"
+    api_key = await _get_user_api_key(user_id) or default_key
+    if not api_key:
+        raise ValueError(f"API key is required for {provider}")
+    return model_name, api_key
 
 
 @app.before_serving
@@ -161,6 +214,8 @@ async def login():
 
 @app.route('/logout')
 async def logout():
+    if current_user.is_authenticated:
+        await _delete_user_api_key(current_user.auth_id)
     logout_user()
     return redirect(url_for("login"))
 
@@ -188,28 +243,46 @@ async def settings():
 
     form = await request.form
     provider = form.get("provider", "genenetwork")
-    api_key = form.get("api_key", "").strip()
+    api_key = form.get("api_key", "").strip() or None
+    user_id = current_user.auth_id
 
     if provider != "genenetwork":
+        if not api_key:
+            await flash("API key is required for Claude models")
+            return redirect(url_for("settings"))
         try:
-            call_claude(api_key)
+            await asyncio.to_thread(call_claude, api_key)
         except requests.exceptions.RequestException as exc:
             await flash(f"Invalid API key or Anthropic request failed: {exc}")
             return redirect(url_for("settings"))
-
-    session["llm_provider"] = provider
-    if api_key:
-        session["llm_api_key"] = api_key
+        await _set_user_api_key(user_id, api_key)
     else:
-        session.pop("llm_api_key", None)
+        await _delete_user_api_key(user_id)
 
+    try:
+        model_name, resolved_key = await _resolve_provider(provider, user_id)
+    except ValueError as exc:
+        await flash(str(exc))
+        return redirect(url_for("settings"))
+
+    configure_lm(_LM, resolved_key, model_name)
+    session["llm_provider"] = provider
     return redirect(url_for("index"))
+
+_PROVIDER_LABELS = {
+    "genenetwork": "GeneNetwork",
+    "claude-opus": "Claude Opus",
+    "claude-haiku": "Claude Haiku",
+}
+
 
 @app.route("/")
 @login_required
 async def index():
     """Serve the AI search web interface."""
-    return await render_template("index.html")
+    provider = session.get("llm_provider", "genenetwork")
+    model_label = _PROVIDER_LABELS.get(provider, "GeneNetwork")
+    return await render_template("index.html", model_label=model_label)
 
 
 @app.route("/search/stream-shell", methods=["GET"])
@@ -253,6 +326,10 @@ async def search_stream():
     if not user_id:
         session["user_id"] = str(uuid.uuid4())
         user_id = session["user_id"]
+
+    provider = session.get("llm_provider", "genenetwork")
+    model_name, api_key = await _resolve_provider(provider, current_user.auth_id)
+    configure_lm(_LM, api_key, model_name)
 
     async def event_stream():
         completed = set()
