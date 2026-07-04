@@ -65,7 +65,7 @@ if __name__ == "__main__":
     if MODEL_TYPE:
         llm["kwargs"] = f"http://localhost:{PORT}/v1"
 
-    dspy.configure(lm=llm, adapter=dspy.JSONAdapter())
+    dspy.configure(lm=llm)
 
     os.environ[f"{MODEL_NAME.split("/")[0]}_API_KEY"] = API_KEY
     memory_config = MemoryConfig(
