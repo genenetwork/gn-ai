@@ -86,7 +86,7 @@ if __name__ == "__main__":
     )        
     dspy.configure(lm=llm)
 
-    os.environ[f"{MODEL_NAME.split("/")[0]}_API_KEY"] = API_KEY
+    os.environ[f"{MODEL_NAME.split('/')[0].upper()}_API_KEY"] = API_KEY
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,

@@ -64,7 +64,7 @@ if __name__ == "__main__":
     )
     dspy.configure(lm=llm)
 
-    os.environ[f"{MODEL_NAME.split("/")[0]}_API_KEY"] = API_KEY
+    os.environ[f"{MODEL_NAME.split('/')[0].upper()}_API_KEY"] = API_KEY
     memory_config = MemoryConfig(
         llm={
             "provider": "litellm",
