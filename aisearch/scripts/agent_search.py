@@ -3,20 +3,22 @@
 import argparse
 import asyncio
 import os
+from typing import Any
 
-from dotenv import load_dotenv
 import dspy
 import torch
-from typing import Any
+from dotenv import load_dotenv
+from gnais.search.agent import agent_search
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
-from gnais.search.agent import agent_search
 
 
 def digest(query: str, memory: Any = None, user_id: str = "default_user"):
     async def _run():
         output = ""
-        async for chunk in agent_search(query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id):
+        async for chunk in agent_search(
+            query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id
+        ):
             if isinstance(chunk, dict) and "final" in chunk:
                 final = chunk["final"]
                 output = final
@@ -26,6 +28,7 @@ def digest(query: str, memory: Any = None, user_id: str = "default_user"):
                 print(chunk, end="", flush=True)
         print()
         return output
+
     return asyncio.run(_run())
 
 
@@ -51,14 +54,12 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(SEED)
 
     if int(MODEL_TYPE) == 0:
+        PORT = os.getenv("PORT")
         llm = dspy.LM(
             model=f"openai/{MODEL_NAME}",
-            api_base="http://localhost:7501/v1",
+            api_base=f"http://localhost:{PORT}/v1",
             api_key="local",
-            model_type="chat",
             max_tokens=10_000,
-            n_ctx=10_000,
-            seed=2_025,
             temperature=0,
             verbose=False,
         )
@@ -80,9 +81,9 @@ if __name__ == "__main__":
     # This a turnaround
     # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
     if "moonshot" in MODEL_NAME.lower():
-        os.environ["MOONSHOT_API_KEY"]=API_KEY
+        os.environ["MOONSHOT_API_KEY"] = API_KEY
     elif "anthropic" in MODEL_NAME.lower():
-        os.environ["ANTHROPIC_API_KEY"]=API_KEY
+        os.environ["ANTHROPIC_API_KEY"] = API_KEY
 
     memory_config = MemoryConfig(
         llm={

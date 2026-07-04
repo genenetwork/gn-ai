@@ -162,14 +162,12 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(SEED)
 
     if MODEL_TYPE == 0:
+        PORT = os.getenv("PORT")
         llm = dspy.LM(
             model=f"openai/{MODEL_NAME}",
-            api_base="http://localhost:7501/v1",
+            api_base=f"http://localhost:{PORT}/v1",
             api_key="local",
-            model_type="chat",
             max_tokens=10_000,
-            n_ctx=10_000,
-            seed=2_025,
             temperature=1,
             cache=False,
             verbose=False,
