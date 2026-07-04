@@ -65,9 +65,9 @@ if __name__ == "__main__":
 
     CORPUS_PATH = os.getenv("CORPUS_PATH")
     DB_PATH = os.getenv("DB_PATH")
-    SEED = os.getenv("SEED")
+    SEED = int(os.getenv("SEED"))
     MODEL_NAME = os.getenv("MODEL_NAME")
-    MODEL_TYPE = os.getenv("MODEL_TYPE")
+    MODEL_TYPE = int(os.getenv("MODEL_TYPE"))
     API_KEY = os.getenv("API_KEY")
     PORT = os.getenv("PORT")
 
@@ -79,13 +79,11 @@ if __name__ == "__main__":
     llm = dspy.LM(
         model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
         api_key=API_KEY if MODEL_TYPE else "local",
+        api_base = None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
         max_tokens=10_000,
         temperature=0,
         verbose=False,
-    )
-    if MODEL_TYPE:
-        llm["kwargs"] = f"http://localhost:{PORT}/v1"
-        
+    )        
     dspy.configure(lm=llm)
 
     os.environ[f"{MODEL_NAME.split("/")[0]}_API_KEY"] = API_KEY

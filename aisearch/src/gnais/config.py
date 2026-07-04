@@ -17,7 +17,7 @@ class Config:
 
     MEM0_PATH = os.path.join(DB_PATH, "mem0_chroma")
 
-    SEED = os.environ.get("SEED")
+    SEED = int(os.environ.get("SEED"))
     if SEED is None:
         raise RuntimeError("SEED is not set")
 
