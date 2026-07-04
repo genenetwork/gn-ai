@@ -135,33 +135,24 @@ if __name__ == "__main__":
     SEED = os.getenv("SEED")
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = os.getenv("MODEL_TYPE")
-
+    API_KEY = os.getenv("API_KEY")
+    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
+    PORT = os.getenv("PORT")
+    
     torch.manual_seed(SEED)
-
+    
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
 
-    if int(MODEL_TYPE) == 0:
-        PORT = os.getenv("PORT")
-        llm = dspy.LM(
-            model=f"openai/{MODEL_NAME}",
-            api_base=f"http://localhost:{PORT}/v1",
-            api_key="local",
-            max_tokens=10_000,
-            temperature=0,
-            verbose=False,
-        )
-    elif int(MODEL_TYPE) == 1:
-        API_KEY = os.getenv("API_KEY")
-        llm = dspy.LM(
-            MODEL_NAME,
-            api_key=API_KEY,
-            max_tokens=10_000,
-            temperature=0,
-            verbose=False,
-        )
-    else:
-        raise ValueError("MODEL_TYPE must be 0 or 1")
+    llm = dspy.LM(
+        model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
+        api_key=API_KEY if MODEL_TYPE else "local",
+        max_tokens=10_000,
+        temperature=0,
+        verbose=False,
+    )
+    if MODEL_TYPE:
+        llm["kwargs"] = f"http://localhost:{PORT}/v1"
 
     dspy.configure(lm=llm)
 
