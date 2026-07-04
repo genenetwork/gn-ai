@@ -8,6 +8,7 @@ from typing import Any
 import dspy
 import torch
 from dotenv import load_dotenv
+from gnais.config import Config
 from gnais.search.agent import agent_search
 from mem0 import Memory
 from mem0.configs.base import MemoryConfig
@@ -17,7 +18,7 @@ def digest(query: str, memory: Any = None, user_id: str = "default_user"):
     async def _run():
         output = ""
         async for chunk in agent_search(
-            query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id
+            query=query, sparql_url=Config.SPARQL_ENDPOINT, memory=memory, user_id=user_id
         ):
             if isinstance(chunk, dict) and "final" in chunk:
                 final = chunk["final"]
@@ -41,13 +42,11 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=args.env_file)
 
-    CORPUS_PATH = os.getenv("CORPUS_PATH")
     DB_PATH = os.getenv("DB_PATH")
     SEED = os.getenv("SEED")
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = os.getenv("MODEL_TYPE")
     API_KEY = os.getenv("API_KEY")
-    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
     PORT = os.getenv("PORT")
     
     torch.manual_seed(SEED)

@@ -136,7 +136,6 @@ if __name__ == "__main__":
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = os.getenv("MODEL_TYPE")
     API_KEY = os.getenv("API_KEY")
-    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
     PORT = os.getenv("PORT")
     
     torch.manual_seed(SEED)

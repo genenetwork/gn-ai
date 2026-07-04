@@ -7,6 +7,7 @@ from typing import Any
 import dspy
 import torch
 from dotenv import load_dotenv
+from gnais.config import Config
 from gnais.search.grag import graph_rag_search
 from gnais.search.prompts import GN_FACT_EXTRACTION_PROMPT, GN_UPDATE_MEMORY_PROMPT
 from mem0 import Memory
@@ -16,7 +17,7 @@ from mem0.configs.base import MemoryConfig
 def digest(query: str, memory: Memory = None, user_id: str = "default_user"):
     async def _run():
         async for chunk in graph_rag_search(
-            query=query, sparql_url=SPARQL_ENDPOINT, memory=memory, user_id=user_id
+            query=query, sparql_url=Config.SPARQL_ENDPOINT, memory=memory, user_id=user_id
         ):
             print(chunk, end="", flush=True)
         print()
@@ -39,7 +40,6 @@ if __name__ == "__main__":
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = os.getenv("MODEL_TYPE")
     API_KEY = os.getenv("API_KEY")
-    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
     PORT = os.getenv("PORT")
     
     torch.manual_seed(SEED)
