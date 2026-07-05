@@ -22,7 +22,7 @@ def digest(query: str, memory: Any = None, user_id: str = "default_user"):
                 output = final
                 print(final, end="", flush=True)
             else:
-                output += chunk
+                output += str(chunk)
                 print(chunk, end="", flush=True)
         print()
         return output
