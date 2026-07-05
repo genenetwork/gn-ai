@@ -12,7 +12,6 @@ import numpy as np
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-
 from gnais.config import Config
 from gnais.evaluation.utils import get_dataset, mark
 from gnais.search.agent import agent_search
@@ -26,27 +25,6 @@ from gnais.search.corpus import (
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
 from gnais.search.ragent import hybrid_search
-
-
-def run_eval(
-    runner: Any,
-    evaluation_set: list[dspy.Example],
-) -> dict[str, float]:
-    precisions, recalls, f1s = [], [], []
-    for example in evaluation_set:
-        query = example.get("query")
-        true_response = example.get("answer")
-        generated_response = runner(query=query).get("answer")
-        precision, recall, f1 = mark(query, generated_response, true_response)
-        precisions.append(precision)
-        recalls.append(recall)
-        f1s.append(f1)
-    metrics = {
-        "precision": np.mean(precisions).item(),
-        "recall": np.mean(recalls).item(),
-        "f1": np.mean(f1s).item(),
-    }
-    return metrics
 
 
 def make_program(
@@ -160,6 +138,27 @@ def hybrid_digest(query: str, memory: Any = None) -> str:
     return _run_async(_run)
 
 
+def run_eval(
+    runner: Any, evaluation_set: list[dspy.Example], judge_lm: dspy.LM
+) -> dict[str, float]:
+    precisions, recalls, f1s = [], [], []
+    for example in evaluation_set:
+        query = example.get("query")
+        true_response = example.get("answer")
+        generated_response = runner(query=query).get("answer")
+        with dspy.context(lm=judge_llm):
+            precision, recall, f1 = mark(query, generated_response, true_response)
+        precisions.append(precision)
+        recalls.append(recall)
+        f1s.append(f1)
+    metrics = {
+        "precision": np.mean(precisions).item(),
+        "recall": np.mean(recalls).item(),
+        "f1": np.mean(f1s).item(),
+    }
+    return metrics
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", default=".env", help="Path to .env file")
@@ -175,6 +174,7 @@ if __name__ == "__main__":
     N_ITERATIONS = int(os.getenv("N_ITERATIONS"))
     API_KEY = os.getenv("API_KEY")
     PORT = os.getenv("PORT")
+    JUDGE_MODEL = os.getenv("JUDGE_MODEL")
 
     torch.manual_seed(SEED)
     if torch.cuda.is_available():
@@ -191,13 +191,22 @@ if __name__ == "__main__":
     )
     dspy.configure(lm=llm)
 
+    judge_llm = dspy.LM(
+        model=JUDGE_MODEL,
+        api_key=API_KEY,
+        max_tokens=1_000,
+        temperature=1,
+        cache=False,
+        verbose=False,
+    )
+
     evaluation_set = get_dataset(DATASET_PATH)
     collection = {}
 
     # Run evaluation set with LLM only
     base = dspy.ChainOfThought("query -> answer: str")
     for n in range(N_ITERATIONS):
-        base_metrics = run_eval(base, evaluation_set)
+        base_metrics = run_eval(base, evaluation_set, judge_llm)
         collection[f"base_{n}"] = base_metrics
 
     # Run evaluation set with GN systems
@@ -206,7 +215,7 @@ if __name__ == "__main__":
         print(f"Running evaluation for {system_name}")
         for n in range(N_ITERATIONS):
             print(f"Iteration {n+1}")
-            system_metrics = run_eval(make_program(system), evaluation_set)
+            system_metrics = run_eval(make_program(system), evaluation_set, judge_llm)
             collection[f"{system_name} {n}"] = system_metrics
         print(f"Evaluation completed for {system_name}")
     final = pd.DataFrame(collection)
