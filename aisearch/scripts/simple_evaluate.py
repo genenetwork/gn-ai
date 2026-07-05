@@ -173,6 +173,8 @@ if __name__ == "__main__":
     MODEL_NAME = os.getenv("MODEL_NAME")
     MODEL_TYPE = int(os.getenv("MODEL_TYPE"))
     N_ITERATIONS = int(os.getenv("N_ITERATIONS"))
+    API_KEY = os.getenv("API_KEY")
+    PORT = os.getenv("PORT")
 
     torch.manual_seed(SEED)
     if torch.cuda.is_available():
