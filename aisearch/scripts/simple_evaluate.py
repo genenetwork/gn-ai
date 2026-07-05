@@ -216,9 +216,6 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=args.env_file)
 
-    CORPUS_PATH = os.getenv("CORPUS_PATH")
-    DB_PATH = os.getenv("DB_PATH")
-    SPARQL_ENDPOINT = os.getenv("SPARQL_ENDPOINT")
     DATASET_PATH = os.getenv("DATASET_PATH")
     OUTPUT_PATH = os.getenv("OUTPUT_PATH")
     SEED = int(os.getenv("SEED"))
@@ -227,37 +224,19 @@ if __name__ == "__main__":
     N_ITERATIONS = int(os.getenv("N_ITERATIONS"))
 
     torch.manual_seed(SEED)
-
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
 
-    if MODEL_TYPE == 0:
-        llm = dspy.LM(
-            model=f"openai/{MODEL_NAME}",
-            api_base="http://localhost:7501/v1",
-            api_key="local",
-            model_type="chat",
-            max_tokens=10_000,
-            n_ctx=10_000,
-            seed=2_025,
-            temperature=1,
-            cache=False,
-            verbose=False,
-        )
-    elif MODEL_TYPE == 1:
-        API_KEY = os.getenv("API_KEY")
-        llm = dspy.LM(
-            MODEL_NAME,
-            api_key=API_KEY,
-            max_tokens=10_000,
-            temperature=1,
-            cache=False,
-            verbose=False,
-        )
-    else:
-        raise ValueError("MODEL_TYPE must be 0 or 1")
-
+    llm = dspy.LM(
+        model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
+        api_key=API_KEY if MODEL_TYPE else "local",
+        api_base=None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
+        max_tokens=10_000,
+        temperature=0,
+        verbose=False,
+    )
     dspy.configure(lm=llm)
+
     evaluation_set = get_dataset(DATASET_PATH)
     collection = {}
 
