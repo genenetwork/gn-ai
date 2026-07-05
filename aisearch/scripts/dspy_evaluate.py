@@ -11,7 +11,6 @@ import dspy
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-
 from gnais.config import Config
 from gnais.evaluation.utils import get_dataset, mark
 from gnais.search.agent import agent_search
@@ -27,64 +26,6 @@ from gnais.search.rag import rag_search
 from gnais.search.ragent import hybrid_search
 
 
-def evaluator(
-    gold: dspy.Example,
-    pred: str,
-    trace=None,
-    pred_name=None,
-    pred_trace=None,
-) -> int:
-    query = gold["query"]
-    true_response = gold["answer"]
-    precision, recall, f1 = mark(query, pred, true_response)
-    return 1 if (f1 >= 0.6 or recall >= 0.7 or precision >= 0.7) else 0
-
-
-def run_eval(
-    runner: dspy.Evaluate,
-    evaluation_set: list[dspy.Example],
-    search_func: Any,
-) -> dspy.evaluate.EvaluationResult:
-
-    search = dspy.Tool(
-        name="search",
-        desc="Answer the question asked by the user.",
-        args={
-            "query": {
-                "type": "string",
-                "desc": "question asked by the user",
-            },
-        },
-        func=search_func,
-    )
-
-    class Signature(dspy.Signature):
-        query: str = dspy.InputField(desc="User question")
-        answer: str = dspy.OutputField(
-            desc="Answer to user's query with details and explanations"
-        )
-
-    # Wrap hybrid search into a DSPy module that is compatible with DSPy evaluation
-    program = dspy.ReAct(
-        signature=Signature, tools=[search], max_iters=2
-    )  # limit iterations
-
-    return runner(program)
-
-
-_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
-
-
-def _run_async(async_fn, *args, **kwargs):
-    """Run async function in a separate thread with a fresh event loop"""
-
-    def _worker():
-        return asyncio.run(async_fn(*args, **kwargs))
-
-    return _TOOL_EXECUTOR.submit(_worker).result()
-
-
-# Wrap search functions inside conveniences
 def rag_digest(query: str, memory: Any = None) -> str:
     async def _run() -> str:
         docs = get_docs(Config.CORPUS_PATH)
@@ -153,6 +94,63 @@ def hybrid_digest(query: str, memory: Any = None) -> str:
     return _run_async(_run)
 
 
+def evaluator(
+    gold: dspy.Example,
+    pred: str,
+    trace=None,
+    pred_name=None,
+    pred_trace=None,
+) -> int:
+    query = gold["query"]
+    true_response = gold["answer"]
+    precision, recall, f1 = mark(query, pred, true_response)
+    return 1 if (f1 >= 0.6 or recall >= 0.7 or precision >= 0.7) else 0
+
+
+def run_eval(
+    runner: dspy.Evaluate,
+    evaluation_set: list[dspy.Example],
+    search_func: Any,
+) -> dspy.evaluate.EvaluationResult:
+
+    search = dspy.Tool(
+        name="search",
+        desc="Answer the question asked by the user.",
+        args={
+            "query": {
+                "type": "string",
+                "desc": "question asked by the user",
+            },
+        },
+        func=search_func,
+    )
+
+    class Signature(dspy.Signature):
+        query: str = dspy.InputField(desc="User question")
+        answer: str = dspy.OutputField(
+            desc="Answer to user's query with details and explanations"
+        )
+
+    # Wrap hybrid search into a DSPy module that is compatible with DSPy evaluation
+    program = dspy.ReAct(
+        signature=Signature, tools=[search], max_iters=2
+    )  # limit iterations
+
+    return runner(program)
+
+
+_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
+
+
+def _run_async(async_fn, *args, **kwargs):
+    """Run async function in a separate thread with a fresh event loop"""
+
+    def _worker():
+        return asyncio.run(async_fn(*args, **kwargs))
+
+    return _TOOL_EXECUTOR.submit(_worker).result()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--env-file", default=".env", help="Path to .env file")
@@ -168,21 +166,31 @@ if __name__ == "__main__":
     N_ITERATIONS = int(os.getenv("N_ITERATIONS"))
     API_KEY = os.getenv("API_KEY")
     PORT = os.getenv("PORT")
+    JUDGE_MODEL = os.getenv("JUDGE_MODEL")
 
     torch.manual_seed(SEED)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
 
-        llm = dspy.LM(
-            model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
-            api_key=API_KEY if MODEL_TYPE else "local",
-            api_base=None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
-            max_tokens=10_000,
-            temperature=1,
-            cache=False,
-            verbose=False,
-        )
+    llm = dspy.LM(
+        model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
+        api_key=API_KEY if MODEL_TYPE else "local",
+        api_base=None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
+        max_tokens=10_000,
+        temperature=1,
+        cache=False,
+        verbose=False,
+    )
     dspy.configure(lm=llm)
+
+    judge_llm = dspy.LM(
+        model=JUDGE_MODEL,
+        api_key=API_KEY,
+        max_tokens=1_000,
+        temperature=1,
+        cache=False,
+        verbose=False,
+    )
 
     evaluation_set = get_dataset(DATASET_PATH)
     evaluate = dspy.Evaluate(
@@ -192,7 +200,7 @@ if __name__ == "__main__":
         provide_traceback=True,
         display_table=False,
         display_progress=True,
-        lm=llm,
+        lm=judge_llm,
     )
     collection = {}
 
