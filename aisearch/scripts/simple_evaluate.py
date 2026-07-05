@@ -65,7 +65,7 @@ def make_program(
 
 
 def run_eval(
-    runner: Any, evaluation_set: list[dspy.Example], judge_lm: dspy.LM
+    runner: Any, evaluation_set: list[dspy.Example], judge_llm: dspy.LM
 ) -> dict[str, float]:
     precisions, recalls, f1s = [], [], []
     for example in evaluation_set:
