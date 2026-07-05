@@ -53,3 +53,83 @@ def mark(
     f1 = (2 * tp_score) / ((2 * tp_score) + fp_score + fn_score + tiny_term)
 
     return precision, recall, f1
+
+
+_TOOL_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="search")
+
+
+def _run_async(async_fn, *args, **kwargs):
+    """Run async function in a separate thread with a fresh event loop"""
+
+    def _worker():
+        return asyncio.run(async_fn(*args, **kwargs))
+
+    return _TOOL_EXECUTOR.submit(_worker).result()
+
+
+def rag_digest(query: str, memory: Any = None) -> str:
+    async def _run() -> str:
+        docs = get_docs(Config.CORPUS_PATH)
+        chroma_db = get_chroma_db(embed_model="Qwen/Qwen3-Embedding-0.6B")
+        decision = classify_search(query).get("decision")
+        retriever = create_ensemble_retriever(
+            chroma_db=chroma_db,
+            docs=docs,
+            keyword_weight=0.7 if decision == "keyword" else 0.5,
+        )
+
+        parts = []
+        async for chunk in rag_search(
+            query=query,
+            retriever=retriever,
+            memory=memory,
+            user_id=str(uuid.uuid4()),
+        ):
+            parts.append(str(chunk))
+        return "".join(parts)
+
+    return _run_async(_run)
+
+
+def sparql_digest(
+    query: str, handler: Any, memory: Any = None, user_id: str = "default_user"
+) -> str:
+    async def _run():
+        parts = []
+        async for chunk in handler(
+            query=query,
+            sparql_url=Config.SPARQL_ENDPOINT,
+            memory=memory,
+            user_id=user_id,
+        ):
+            parts.append(str(chunk))
+        return "".join(parts)
+
+    return _run_async(_run)
+
+
+def graph_rag_digest(query: str, memory: Any = None) -> str:
+    return sparql_digest(
+        query, graph_rag_search, memory=memory, user_id=str(uuid.uuid4())
+    )
+
+
+def agent_digest(query: str, memory: Any = None) -> str:
+    return sparql_digest(query, agent_search, memory=memory, user_id=str(uuid.uuid4()))
+
+
+def hybrid_digest(query: str, memory: Any = None) -> str:
+    async def _run():
+        final_html = None
+        async for event in hybrid_search(
+            query, memory=memory, user_id=str(uuid.uuid4())
+        ):
+            source = event["source"]
+            kind = event["kind"]
+            content = event["content"]
+            if source == "hybrid" and kind == "final":
+                final_html = content
+                break
+        return final_html
+
+    return _run_async(_run)
