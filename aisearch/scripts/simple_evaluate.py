@@ -4,7 +4,6 @@ import argparse
 import asyncio
 import os
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import dspy
