@@ -271,7 +271,7 @@ async def sparql_fetch(
 def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
     def _fetch(query: str) -> Any:
         schema_hint = build_schema_hint(sparql_uri)
-        pred = QueryTranslation()(
+        pred = dspy.Predict(QueryTranslation)(
             original_query=query,
             schema_hint=schema_hint,
         )
