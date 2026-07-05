@@ -176,7 +176,8 @@ if __name__ == "__main__":
             api_key=API_KEY if MODEL_TYPE else "local",
             api_base=None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
             max_tokens=10_000,
-            temperature=0,
+            temperature=1,
+            cache=False,
             verbose=False,
         )
     dspy.configure(lm=llm)
