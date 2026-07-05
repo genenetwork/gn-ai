@@ -1,6 +1,7 @@
 """Common utilities for evaluation"""
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 import dspy
 import pandas as pd
