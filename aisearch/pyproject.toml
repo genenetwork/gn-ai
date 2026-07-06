@@ -10,7 +10,7 @@ maintainers = [
     {name = "Munyoki Kilyungi", email = "me@bonfacemunyoki.com"},
 ]
 license = {text = "MIT"}
-readme = "README.md"
+readme = "../README.md"
 requires-python = ">=3.11,<3.15"
 dependencies = [
     "authlib (==1.5.1)",
