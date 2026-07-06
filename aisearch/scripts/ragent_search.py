@@ -144,9 +144,9 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(SEED)
 
     llm = dspy.LM(
-        model=MODEL_NAME if MODEL_TYPE else f"openai/{MODEL_NAME}",
+        model=MODEL_NAME if MODEL_TYPE else f"ollama_chat/{MODEL_NAME}",
         api_key=API_KEY if MODEL_TYPE else "local",
-        api_base = None if MODEL_TYPE else f"http://localhost:{PORT}/v1",
+        api_base = None if MODEL_TYPE else f"http://localhost:{PORT}",
         max_tokens=10_000,
         temperature=0,
         verbose=False,
