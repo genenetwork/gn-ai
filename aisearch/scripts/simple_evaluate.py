@@ -121,7 +121,7 @@ if __name__ == "__main__":
         model=MODEL_NAME if MODEL_TYPE else f"ollama_chat/{MODEL_NAME}",
         api_key=API_KEY if MODEL_TYPE else "local",
         api_base=None if MODEL_TYPE else f"http://localhost:{PORT}",
-        max_tokens=10_000,
+        max_tokens=100_000,
         temperature=1,
         cache=False,
         verbose=False,
