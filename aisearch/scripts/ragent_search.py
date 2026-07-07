@@ -132,49 +132,28 @@ if __name__ == "__main__":
     load_dotenv(dotenv_path=args.env_file)
 
     DB_PATH = os.getenv("DB_PATH")
-    SEED = os.getenv("SEED")
+    SEED = int(os.getenv("SEED"))
     MODEL_NAME = os.getenv("MODEL_NAME")
-    MODEL_TYPE = os.getenv("MODEL_TYPE")
-
+    MODEL_TYPE = int(os.getenv("MODEL_TYPE"))
+    API_KEY = os.getenv("API_KEY")
+    PORT = os.getenv("PORT")
+    
     torch.manual_seed(SEED)
-
+    
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(SEED)
 
-    if int(MODEL_TYPE) == 0:
-        llm = dspy.LM(
-            model=f"openai/{MODEL_NAME}",
-            api_base="http://localhost:7501/v1",
-            api_key="local",
-            model_type="chat",
-            max_tokens=10_000,
-            n_ctx=10_000,
-            seed=2_025,
-            temperature=0,
-            verbose=False,
-        )
-    elif int(MODEL_TYPE) == 1:
-        API_KEY = os.getenv("API_KEY")
-        llm = dspy.LM(
-            MODEL_NAME,
-            api_key=API_KEY,
-            max_tokens=10_000,
-            temperature=0,
-            verbose=False,
-        )
-    else:
-        raise ValueError("MODEL_TYPE must be 0 or 1")
-
+    llm = dspy.LM(
+        model=MODEL_NAME if MODEL_TYPE else f"ollama_chat/{MODEL_NAME}",
+        api_key=API_KEY if MODEL_TYPE else "local",
+        api_base = None if MODEL_TYPE else f"http://localhost:{PORT}",
+        max_tokens=100_000,
+        temperature=0,
+        verbose=False,
+    )
     dspy.configure(lm=llm)
 
-    # NOTE: Find a better way of doing this
-    # This a turnaround
-    # With litellm provider in MemoryConfig, a MOONSHOT_API_KEY or ANTHROPIC_API_KEY is expected
-    if "moonshot" in MODEL_NAME.lower():
-        os.environ["MOONSHOT_API_KEY"] = API_KEY
-    elif "anthropic" in MODEL_NAME.lower():
-        os.environ["ANTHROPIC_API_KEY"] = API_KEY
-
+    os.environ[f"{MODEL_NAME.split('/')[0].upper()}_API_KEY"] = API_KEY
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,

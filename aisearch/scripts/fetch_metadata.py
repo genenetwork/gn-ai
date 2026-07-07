@@ -6,16 +6,17 @@ subject and converting them to human-readable sentences. It processes different
 entity types in parallel using threads and writes each type to its own file.
 """
 
+import argparse
 import json
 import os
-import time
 import random
-import argparse
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Tuple, Optional
-from SPARQLWrapper import SPARQLWrapper, JSON
+from typing import Dict, List, Optional, Tuple
 from urllib.error import HTTPError
+
+from SPARQLWrapper import JSON, SPARQLWrapper
 
 SPARQL_ENDPOINT = "https://rdf.genenetwork.org/sparql"
 DEFAULT_GRAPH = "http://rdf.genenetwork.org/v1"

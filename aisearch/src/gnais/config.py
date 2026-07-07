@@ -1,5 +1,6 @@
 __all__ = ("Config",)
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -16,7 +17,7 @@ class Config:
 
     MEM0_PATH = os.path.join(DB_PATH, "mem0_chroma")
 
-    SEED = os.environ.get("SEED")
+    SEED = int(os.environ.get("SEED"))
     if SEED is None:
         raise RuntimeError("SEED is not set")
 
@@ -52,3 +53,7 @@ class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY")
     if SECRET_KEY is None:
         raise RuntimeError("SECRET_KEY is not set")
+
+    PORT = os.environ.get("PORT")
+    if PORT is None:
+        raise RuntimeError("PORT for local model is not set")
