@@ -2,26 +2,41 @@ import asyncio
 import concurrent.futures
 import os
 import uuid
-import quart_flask_patch  # noqa: F401
-import dspy
-import torch
-import quart
 
-from mem0 import Memory
-from mem0.configs.base import MemoryConfig
-from quart import Quart, jsonify, request, render_template, Response, session, url_for, redirect, flash
-from quart.typing import ResponseReturnValue
-from quart_auth import AuthUser, current_user, login_required, login_user, logout_user, QuartAuth, Unauthorized
+import dspy
+import quart
+import quart_flask_patch  # noqa: F401
+import torch
 from flask_caching import Cache
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from gnais.config import Config
+from gnais.search.prompts import GN_FACT_EXTRACTION_PROMPT, GN_UPDATE_MEMORY_PROMPT
 from gnais.search.ragent import hybrid_search
-from gnais.search.prompts import (
-    GN_FACT_EXTRACTION_PROMPT,
-    GN_UPDATE_MEMORY_PROMPT,
-)
 from markupsafe import escape
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
+from quart import (
+    Quart,
+    Response,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from quart.typing import ResponseReturnValue
+from quart_auth import (
+    AuthUser,
+    QuartAuth,
+    Unauthorized,
+    current_user,
+    login_required,
+    login_user,
+    logout_user,
+)
 
 app = Quart(__name__)
 app.config.from_object(Config)
@@ -56,18 +71,19 @@ if torch.cuda.is_available():
     torch.cuda.manual_seed_all(app.config["SEED"])
 
 LLM_CONFIG = {
-    "model": app.config["MODEL_NAME"] if app.config.get("MODEL_NAME") else f"openai/{app.config['MODEL_NAME']}",
+    "model": (
+        app.config["MODEL_NAME"]
+        if app.config.get("MODEL_NAME")
+        else f"openai/{app.config['MODEL_NAME']}"
+    ),
     "api_key": app.config["API_KEY"] if app.config.get("MODEL_NAME") else "local",
     "max_tokens": 20_000,
     "temperature": 0.5,
-    "verbose": False
+    "verbose": False,
 }
 
 if not app.config.get("MODEL_TYPE"):
-    LLM_CONFIG["api_base"] = "http://localhost:7501/v1"
-    LLM_CONFIG["model_type"] = "chat"
-    LLM_CONFIG["n_ctx"] = 100_000
-    LLM_CONFIG["seed"] = 2_025
+    LLM_CONFIG["api_base"] = f"http://localhost:{app.config['PORT']}/v1"
 
 
 dspy.configure(lm=dspy.LM(**LLM_CONFIG))
@@ -80,38 +96,41 @@ async def _set_default_executor():
 
 
 #  Shared mem0 memory instance (loaded once at server startup)
-_MEMORY = Memory(config=MemoryConfig(
-    custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
-    custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
-    llm={
-        "provider": "litellm",
-        "config": {
-            "model": Config.MEMORY_MODEL,
-            "temperature": 0.5,
-            "max_tokens": 100_000,
-            "api_key": Config.API_KEY,
-        },
-    },
-    embedder={
-        "provider": "huggingface",
-        "config": {
-            "model": "Qwen/Qwen3-Embedding-0.6B",
-            "embedding_dims": 1024,
-            "model_kwargs": {
-                "trust_remote_code": True,
-                "device": "cuda" if torch.cuda.is_available() else "cpu",
+_MEMORY = Memory(
+    config=MemoryConfig(
+        custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
+        custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
+        llm={
+            "provider": "litellm",
+            "config": {
+                "model": Config.MEMORY_MODEL,
+                "temperature": 0.5,
+                "max_tokens": 100_000,
+                "api_key": Config.API_KEY,
             },
         },
-    },
-    vector_store={
-        "provider": "chroma",
-        "config": {
-            "collection_name": "mem0",
-            "host": "localhost",
-            "port": 8001,
+        embedder={
+            "provider": "huggingface",
+            "config": {
+                "model": "Qwen/Qwen3-Embedding-0.6B",
+                "embedding_dims": 1024,
+                "model_kwargs": {
+                    "trust_remote_code": True,
+                    "device": "cuda" if torch.cuda.is_available() else "cpu",
+                },
+            },
         },
-    },
-))
+        vector_store={
+            "provider": "chroma",
+            "config": {
+                "collection_name": "mem0",
+                "host": "localhost",
+                "port": 8001,
+            },
+        },
+    )
+)
+
 
 def _format_sse(event: str, data: str) -> str:
     lines = data.splitlines() or [""]
@@ -139,6 +158,7 @@ def _stream_final_status_markup(message: str, tone: str = "waiting") -> str:
         "</div>"
     )
 
+
 @app.route("/login", methods=["GET", "POST"])
 async def login():
     # KLUDGE: Set a static password for now to prevent token abuse
@@ -156,14 +176,17 @@ async def login():
     flash("Set the correct user/password")
     return redirect(url_for("login"))
 
-@app.route('/logout')
+
+@app.route("/logout")
 async def logout():
     logout_user()
-    return 'Logged out'
+    return "Logged out"
+
 
 @app.errorhandler(Unauthorized)
 async def redirect_to_login(*_: Exception) -> ResponseReturnValue:
     return redirect(url_for("login"))
+
 
 @app.route("/")
 @login_required
@@ -313,7 +336,9 @@ async def search_stream():
                     final_sent = True
                     # await asyncio.to_thread(cache.set, cache_key, content, timeout=3600)
                     yield _format_sse("final_html", content)
-                    yield _format_sse("search_state", _stream_status_markup("Complete", "complete"))
+                    yield _format_sse(
+                        "search_state", _stream_status_markup("Complete", "complete")
+                    )
                     yield _format_sse("stream_end", "<div></div>")
                     return
         except Exception as exc:
