@@ -1,10 +1,8 @@
 """Script for performance evaluation of GN AI systems using mere averaging"""
 
 import argparse
-import asyncio
 import os
 import time
-import uuid
 from typing import Any
 
 import dspy
@@ -12,7 +10,6 @@ import numpy as np
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-from gnais.config import Config
 from gnais.evaluation.utils import (
     agent_digest,
     get_dataset,
