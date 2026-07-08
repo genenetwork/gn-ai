@@ -1,16 +1,13 @@
 """Script for performance evaluation of GN AI systems using DSPy.Evaluate and custom decision function"""
 
 import argparse
-import asyncio
 import os
-import uuid
 from typing import Any
 
 import dspy
 import pandas as pd
 import torch
 from dotenv import load_dotenv
-from gnais.config import Config
 from gnais.evaluation.utils import (
     agent_digest,
     get_dataset,
