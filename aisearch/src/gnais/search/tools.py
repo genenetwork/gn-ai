@@ -1,8 +1,8 @@
-import os
 import asyncio
 import concurrent.futures
 import functools
 import logging
+import os
 import random
 from typing import Any
 
@@ -48,7 +48,7 @@ async def _exec_sparql(
             return resp.json()
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (504, 503, 502) and attempt < max_retries - 1:
-                await asyncio.sleep(base_delay * (2 ** attempt) + random.uniform(0, 1))
+                await asyncio.sleep(base_delay * (2**attempt) + random.uniform(0, 1))
                 continue
             raise
     return {}
@@ -61,12 +61,14 @@ def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str], set[str]]:
     Returns (literal_props, object_props, snapshot_objs).
     The three queries run concurrently in a thread pool.
     """
+
     def _bindings(result: dict, var: str) -> set[str]:
         return {
             b[var]["value"]
             for b in result.get("results", {}).get("bindings", [])
             if b.get(var)
         }
+
     queries = {
         "literal": """
 SELECT DISTINCT ?p
@@ -148,6 +150,7 @@ def _uri_to_qname(uri: str) -> str:
             return f"{prefix}:{uri[len(ns):]}"
     return f"<{uri}>"
 
+
 def build_schema_hint(sparql_uri: str) -> str:
     """Build a compact schema hint from the live Virtuoso endpoint.
 
@@ -195,54 +198,56 @@ CRITICAL RULES:
 
 class QueryTranslation(dspy.Signature):
     """Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
-Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
+    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
 
-CRITICAL SCHEMA RULES (derived from GeneNetwork RDF transforms):
-1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
-2. ALWAYS include `FROM <http://rdf.genenetwork.org/v1>` between SELECT and WHERE.
-3. Strain URIs: use gn:set_BXD, gn:set_B6D2F1, gn:set_HMDP — NEVER gn:BXD, gn:B6D2F1, gn:HMDP.
-4. gnc:phenotype is metadata only (abbreviation, description, lab_code, submitter, contributor). Phenotype TRAITS (with mean, locus, lod_score, additive, sequence, has_trait_page) are gnc:phenotype_trait.
-5. Probesets and DNA markers use gnt:chr for chromosome. Genes use gnt:chromosome.
-6. gnt:has_uniprot_id, gnt:has_homologene_id, gnt:has_kegg_id, gnt:has_omim_id, gnt:has_chebi_id, gnt:has_pub_chem_id exist on gnc:probeset, NOT on gnc:gene.
-7. gnt:has_align_id, gnt:has_protein_id, gnt:has_rgd_id, gnc:has_kg_id, gnc:has_unigen_id exist on gnc:gene, NOT on gnc:dna_marker. Markers use skos:prefLabel or skos:altLabel for names.
-8. gnt:locus on phenotype_trait contains chromosome positions (e.g. "1-59904011"), NOT phenotype names. Never FILTER gnt:locus for trait names like "liver_weight". Instead link trait -> has_phenotype -> phenotype and filter gnt:abbreviation.
-9. gnt:symbol is for probesets. gnt:gene_symbol is for genes and strains.
-10. Datasets are dcat:Dataset. They have dct:title, gnt:has_strain, gnt:has_tissue_info, gnt:has_samples, gnt:has_summary, gnt:has_citation, gnt:has_contributors, gnt:has_case_info, gnt:has_platform_info, gnt:has_specifics, gnt:has_data_processing_info, gnt:has_experiment_design, gnt:has_experiment_type, gnt:has_genotype_files.
-11. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
-12. Gene chips / platforms are skos:Concept with skos:inScheme gnc:gene_chip. They have gnt:has_go_tree_value, gnt:has_geo_series_id.
-13. Mapping methods and averaging methods are skos:Concept in gnc:mapping_method and gnc:avg_method schemes.
-14. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
-15. Leverage as many schema hints as possible.
-16. To extract information about a specific trait, find the closest matches in SNAPSHOT_OBJECTS and use them to infer the proper RDF subject for the trait.
-17. To get trait page or URL, use the predicate `gnt:has_trait_page` with the trait as subject. Its object correspond to the URL. Never build trait URLs manually.
-18. To get publication for a trait, search for object having the predicate `dcterms:references` and the trait as subject.
-19. To get highest LOD score and corresponding marker and additive effect, use the predicates `gnt:lod_score`, `gnt:locus`, and `gnt:additive`, respectively.
-20. Mean trait measurements can be accessed by looking up object with predicate gnt:mean and the trait as subject.
-21. Trait descriptions can be accessed via the predicate `dcterms:description`
-22. When you have the description of a trait, you should use regex pattern in the object term with the predicate `dcterms:description` to find the corresponding trait (subject).
+    CRITICAL SCHEMA RULES (derived from GeneNetwork RDF transforms):
+    1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
+    2. ALWAYS include `FROM <http://rdf.genenetwork.org/v1>` between SELECT and WHERE.
+    3. Strain URIs: use gn:set_BXD, gn:set_B6D2F1, gn:set_HMDP — NEVER gn:BXD, gn:B6D2F1, gn:HMDP.
+    4. gnc:phenotype is metadata only (abbreviation, description, lab_code, submitter, contributor). Phenotype TRAITS (with mean, locus, lod_score, additive, sequence, has_trait_page) are gnc:phenotype_trait.
+    5. Probesets and DNA markers use gnt:chr for chromosome. Genes use gnt:chromosome.
+    6. gnt:has_uniprot_id, gnt:has_homologene_id, gnt:has_kegg_id, gnt:has_omim_id, gnt:has_chebi_id, gnt:has_pub_chem_id exist on gnc:probeset, NOT on gnc:gene.
+    7. gnt:has_align_id, gnt:has_protein_id, gnt:has_rgd_id, gnc:has_kg_id, gnc:has_unigen_id exist on gnc:gene, NOT on gnc:dna_marker. Markers use skos:prefLabel or skos:altLabel for names.
+    8. gnt:locus on phenotype_trait contains chromosome positions (e.g. "1-59904011"), NOT phenotype names. Never FILTER gnt:locus for trait names like "liver_weight". Instead link trait -> has_phenotype -> phenotype and filter gnt:abbreviation.
+    9. gnt:symbol is for probesets. gnt:gene_symbol is for genes and strains.
+    10. Datasets are dcat:Dataset. They have dct:title, gnt:has_strain, gnt:has_tissue_info, gnt:has_samples, gnt:has_summary, gnt:has_citation, gnt:has_contributors, gnt:has_case_info, gnt:has_platform_info, gnt:has_specifics, gnt:has_data_processing_info, gnt:has_experiment_design, gnt:has_experiment_type, gnt:has_genotype_files.
+    11. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+    12. Gene chips / platforms are skos:Concept with skos:inScheme gnc:gene_chip. They have gnt:has_go_tree_value, gnt:has_geo_series_id.
+    13. Mapping methods and averaging methods are skos:Concept in gnc:mapping_method and gnc:avg_method schemes.
+    14. gnt:has_trait_page gives the URL directly. Never build trait URLs manually.
+    15. Leverage as many schema hints as possible.
+    16. To extract information about a specific trait, find the closest matches in SNAPSHOT_OBJECTS and use them to infer the proper RDF subject for the trait.
+    17. To get trait page or URL, use the predicate `gnt:has_trait_page` with the trait as subject. Its object correspond to the URL. Never build trait URLs manually.
+    18. To get publication for a trait, search for object having the predicate `dcterms:references` and the trait as subject.
+    19. To get highest LOD score and corresponding marker and additive effect, use the predicates `gnt:lod_score`, `gnt:locus`, and `gnt:additive`, respectively.
+    20. Mean trait measurements can be accessed by looking up object with predicate gnt:mean and the trait as subject.
+    21. Trait descriptions can be accessed via the predicate `dcterms:description`
+    22. When you have the description of a trait, you should use regex pattern in the object term with the predicate `dcterms:description` to find the corresponding trait (subject).
 
-When querying SPARQL, prefer fast, efficient SPARQL SELECT queries
-that avoid Virtuoso timeouts (504 errors).
+    When querying SPARQL, prefer fast, efficient SPARQL SELECT queries
+    that avoid Virtuoso timeouts (504 errors).
 
-CRITICAL PERFORMANCE RULES (to prevent 504s):
-1. Always add `LIMIT` - start with `LIMIT 50`, increase only if needed. Never omit `LIMIT`.
-2. Never use `SELECT *` - list only the variables you actually need.
-3. Avoid expensive operations: no Cartesian products, no cross joins, no full graph scans.
-4. Use specific FILTER patterns that leverage indexes:
-   - Prefer `STRSTARTS(?label, "prefix")` over `CONTAINS` or regex.
-   - Avoid `FILTER regex(...)` - it disables indexes.
-   - Use `FILTER(?value = "exact")` or `IN` with small lists.
-5. Prefer property paths over multiple joins when traversing a chain.
-6. Use VALUES blocks for small sets of constants instead of UNION or OPTIONAL.
-7. Avoid ORDER BY on large result sets - if needed, combine with `LIMIT` and a narrow `WHERE` clause.
-8. Never use nested subqueries unless absolutely necessary; flatten them.
-9. Use `OPTIONAL` only for truly optional patterns – otherwise, use a simple triple pattern."""
+    CRITICAL PERFORMANCE RULES (to prevent 504s):
+    1. Always add `LIMIT` - start with `LIMIT 50`, increase only if needed. Never omit `LIMIT`.
+    2. Never use `SELECT *` - list only the variables you actually need.
+    3. Avoid expensive operations: no Cartesian products, no cross joins, no full graph scans.
+    4. Use specific FILTER patterns that leverage indexes:
+       - Prefer `STRSTARTS(?label, "prefix")` over `CONTAINS` or regex.
+       - Avoid `FILTER regex(...)` - it disables indexes.
+       - Use `FILTER(?value = "exact")` or `IN` with small lists.
+    5. Prefer property paths over multiple joins when traversing a chain.
+    6. Use VALUES blocks for small sets of constants instead of UNION or OPTIONAL.
+    7. Avoid ORDER BY on large result sets - if needed, combine with `LIMIT` and a narrow `WHERE` clause.
+    8. Never use nested subqueries unless absolutely necessary; flatten them.
+    9. Use `OPTIONAL` only for truly optional patterns – otherwise, use a simple triple pattern.
+    """
 
     original_query: str = dspy.InputField(desc="User query")
     schema_hint: str = dspy.InputField(desc="GeneNetwork schema from Virtuoso")
     translated_queries: list[str] = dspy.OutputField(
         desc="Top 7 valid most relevant SPARQL queries with the highest likelihood of getting non-empty results."
     )
+
 
 async def sparql_fetch(
     sparql_queries: list[str],
@@ -279,8 +284,7 @@ def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
         if not sparql_queries:
             return "No SPARQL queries generated."
         future = LLM_EXECUTOR.submit(
-            asyncio.run,
-            sparql_fetch(sparql_queries, sparql_uri)
+            asyncio.run, sparql_fetch(sparql_queries, sparql_uri)
         )
         return future.result()
 
@@ -323,6 +327,7 @@ check_link = dspy.Tool(
     func=_check_link,
 )
 
+
 # KLUDGE: For now this is lifted from:
 # <https://dspy.ai/tutorials/mem0_react_agent/>
 class MemoryTools:
@@ -331,29 +336,41 @@ class MemoryTools:
     def __init__(self, memory):
         self.memory = memory
 
-    def store_memory(self, content: str, user_id: str, run_id: str, metadata: dict = {}) -> str:
+    def store_memory(
+        self, content: str, user_id: str, run_id: str, metadata: dict = {}
+    ) -> str:
         """Store information in memory."""
         try:
-            self.memory.add(content, user_id=user_id, run_id=run_id, metadata=metadata, infer=True)
+            self.memory.add(
+                content, user_id=user_id, run_id=run_id, metadata=metadata, infer=True
+            )
             return f"Stored memory: {content}"
         except Exception as e:
             return f"Error storing memory: {str(e)}"
 
-    def search_memories(self, query: str, user_id: str, run_id: str, limit: int = 10) -> str:
+    def search_memories(
+        self, query: str, user_id: str, run_id: str, limit: int = 10
+    ) -> str:
         """Search for relevant memories."""
-        results = self.memory.search(query, filters={"user_id": user_id, "run_id": run_id}, top_k=limit)
+        results = self.memory.search(
+            query, filters={"user_id": user_id, "run_id": run_id}, top_k=limit
+        )
         chat_history = ""
         if results and (memories := results.get("results")):
             for memory in memories:
-                if (query := memory.get("metadata", {}).get("query")):
+                if query := memory.get("metadata", {}).get("query"):
                     chat_history += f"Query: {query}\n"
-                chat_history += f"\nMemory({memory['updated_at']}): {memory['memory']}\n"
+                chat_history += (
+                    f"\nMemory({memory['updated_at']}): {memory['memory']}\n"
+                )
         return chat_history.strip()
 
     def get_all_memories(self, user_id: str, run_id: str, filters: dict = {}) -> str:
         """Get all memories for a user."""
         try:
-            results = self.memory.get_all(filters={"user_id": user_id, "run_id": run_id})
+            results = self.memory.get_all(
+                filters={"user_id": user_id, "run_id": run_id}
+            )
             if not results or not results.get("results"):
                 return "No memories found for this user."
 
@@ -383,6 +400,7 @@ class MemoryTools:
 
 def with_memory(memory_type: str = "interaction"):
     """Decorator factory that injects chat_history from mem0 and persists the interaction after streaming."""
+
     def decorator(func):
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -396,9 +414,7 @@ def with_memory(memory_type: str = "interaction"):
             if memory is not None:
                 memory_tools = MemoryTools(memory)
                 memories = memory_tools.search_memories(
-                    query,
-                    user_id=user_id,
-                    run_id=memory_type
+                    query, user_id=user_id, run_id=memory_type
                 )
                 if memories:
                     chat_history = [memories]
@@ -419,5 +435,37 @@ def with_memory(memory_type: str = "interaction"):
                             )
                         )
                 yield value
+
         return wrapper
+
+    return decorator
+
+
+class Route(dspy.Signature):
+    """
+    Choose the most efficient model to handle the task assigned to the program between the LLMs available.
+    The most efficient model is the LLM that can follow the instructions defined in the program signature with good fidelity while saving on unneccessary cost.
+    """
+
+    signature: str = dspy.InputField(desc="The signature of the DSPy program")
+    models: list[str] = dspy.InputField(desc="The 2 models or LLMs available")
+    best_model: str = dspy.OutputField(desc="The most efficient model for the task")
+
+
+def route_model(options: list[dspy.LM]):
+    """Decorator function that helps choose the right model for a DSPy module"""
+
+    def decorator(func: dspy.Module):
+        @functools.wraps(func)
+        def wrapper(**kwargs):
+            signature = func.signature
+            models = [model.__dict__["model"] for model in options]
+            best_model = dspy.Predict(Route)(signature=signature, models=models).get(
+                "best_model"
+            )
+            func.set_lm(best_model)
+            return func(**kwargs)
+
+        return wrapper
+
     return decorator
