@@ -1,5 +1,6 @@
 __all__ = ("Config",)
 import os
+import dspy
 
 from dotenv import load_dotenv
 
@@ -37,10 +38,11 @@ class Config:
     if MODEL_TYPE is None:
         raise RuntimeError("MODEL_TYPE is not set")
     if MODEL_TYPE not in (
-        0,
         1,
+        2,
+        3,
     ):
-        raise ValueError("MODEL_TYPE must be 0 or 1")
+        raise ValueError("MODEL_TYPE must be 1, 2 or 3")
 
     API_KEY = os.environ.get("API_KEY")
     if MODEL_TYPE and API_KEY is None:
@@ -61,3 +63,52 @@ class Config:
     PORT = os.environ.get("PORT")
     if PORT is None:
         raise RuntimeError("PORT for local model is not set")
+
+    if MODEL_TYPE == 1: # only frontier models
+        DEFAULT_LLM = dspy.LM(
+            model=DEFAULT_MODEL,
+            api_key=API_KEY,
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
+        ALTERNATIVE_LLM = dspy.LM(
+            model=ALTERNATIVE_MODEL,
+            api_key=API_KEY,
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
+    elif MODEL_TYPE == 2: # only local models
+        DEFAULT_LLM = dspy.LM(
+            model=f"ollama_chat/{DEFAULT_MODEL}",
+            api_key="local",
+            api_base=f"http://localhost:{PORT}",
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
+        ALTERNATIVE_LLM = dspy.LM(
+            model=f"ollama_chat/{ALTERNATIVE_MODEL}",
+            api_key="local",
+            api_base=f"http://localhost:{PORT}",
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
+    elif MODEL_TYPE == 3: # smart combination of frontier and local models
+        DEFAULT_LLM = dspy.LM(
+            model=DEFAULT_MODEL,
+            api_key=API_KEY,
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
+        ALTERNATIVE_LLM = dspy.LM(
+            model=f"ollama_chat/{ALTERNATIVE_MODEL}",
+            api_key="local",
+            api_base=f"http://localhost:{PORT}",
+            max_tokens=100_000,
+            temperature=1,
+            verbose=False,
+        )
