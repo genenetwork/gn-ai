@@ -70,23 +70,8 @@ torch.manual_seed(app.config["SEED"])
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(app.config["SEED"])
 
-LLM_CONFIG = {
-    "model": (
-        app.config["MODEL_NAME"]
-        if app.config.get("MODEL_NAME")
-        else f"openai/{app.config['MODEL_NAME']}"
-    ),
-    "api_key": app.config["API_KEY"] if app.config.get("MODEL_NAME") else "local",
-    "max_tokens": 20_000,
-    "temperature": 0.5,
-    "verbose": False,
-}
 
-if not app.config.get("MODEL_TYPE"):
-    LLM_CONFIG["api_base"] = f"http://localhost:{app.config['PORT']}/v1"
-
-
-dspy.configure(lm=dspy.LM(**LLM_CONFIG))
+dspy.configure(lm=app.config["DEFAULT_LLM"])
 
 
 @app.before_serving
