@@ -21,9 +21,13 @@ class Config:
     if SEED is None:
         raise RuntimeError("SEED is not set")
 
-    MODEL_NAME = os.environ.get("MODEL_NAME")
-    if MODEL_NAME is None:
-        raise RuntimeError("MODEL_NAME is not set")
+    DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL")
+    if DEFAULT_MODEL is None:
+        raise RuntimeError("DEFAULT_MODEL is not set")
+
+    ALTERNATIVE_MODEL = os.environ.get("ALTERNATIVE_MODEL")
+    if ALTERNATIVE_MODEL is None:
+        raise RuntimeError("ALTERNATIVE_MODEL is not set")
 
     MEMORY_MODEL = os.environ.get("MEMORY_MODEL")
     if MEMORY_MODEL is None:
