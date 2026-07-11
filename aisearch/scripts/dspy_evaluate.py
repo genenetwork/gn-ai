@@ -1,13 +1,12 @@
 """Script for performance evaluation of GN AI systems using DSPy.Evaluate and custom decision function"""
 
-import argparse
 import os
 from typing import Any
 
 import dspy
 import pandas as pd
 import torch
-from dotenv import load_dotenv
+from gnais.config import Config
 from gnais.evaluation.utils import (
     agent_digest,
     get_dataset,
@@ -64,40 +63,31 @@ def run_eval(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--env-file", default=".env", help="Path to .env file")
-    args = parser.parse_args()
-
-    load_dotenv(dotenv_path=args.env_file)
-
     DATASET_PATH = os.getenv("DATASET_PATH")
+    if DATASET_PATH is None:
+        raise FileNotFoundError("DATASET_PATH must be set for evaluation")
+
     OUTPUT_PATH = os.getenv("OUTPUT_PATH")
-    SEED = int(os.getenv("SEED"))
-    MODEL_NAME = os.getenv("MODEL_NAME")
-    MODEL_TYPE = int(os.getenv("MODEL_TYPE"))
+    if OUTPUT_PATH is None:
+        raise FileNotFoundError("OUTPUT_PATH must be set for evaluation")
+
     N_ITERATIONS = int(os.getenv("N_ITERATIONS"))
-    API_KEY = os.getenv("API_KEY")
-    PORT = os.getenv("PORT")
+    if N_ITERATIONS is None:
+        raise ValueError("N_ITERATIONS must be set for evaluation")
+
     JUDGE_MODEL = os.getenv("JUDGE_MODEL")
+    if JUDGE_MODEL is None:
+        raise ValueError("JUDGE MODEL must be set for evaluation")
 
-    torch.manual_seed(SEED)
+    torch.manual_seed(Config.SEED)
     if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(SEED)
+        torch.cuda.manual_seed_all(Config.SEED)
 
-    llm = dspy.LM(
-        model=MODEL_NAME if MODEL_TYPE else f"ollama_chat/{MODEL_NAME}",
-        api_key=API_KEY if MODEL_TYPE else "local",
-        api_base=None if MODEL_TYPE else f"http://localhost:{PORT}",
-        max_tokens=100_000,
-        temperature=1,
-        cache=False,
-        verbose=False,
-    )
-    dspy.configure(lm=llm)
+    dspy.configure(lm=Config.DEFAULT_LLM)
 
     judge_llm = dspy.LM(
         model=JUDGE_MODEL,
-        api_key=API_KEY,
+        api_key=Config.API_KEY,
         max_tokens=1_000,
         temperature=1,
         cache=False,
