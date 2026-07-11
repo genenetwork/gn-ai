@@ -1,17 +1,16 @@
 import json
 import warnings
-
 from functools import lru_cache
-from typing import Any
 from pathlib import Path
+from typing import Any
 
-import torch
-from tqdm import tqdm
 import chromadb
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+import torch
 from langchain_classic.retrievers import EnsembleRetriever
 from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
@@ -44,7 +43,7 @@ def get_embed_model(model_name: str):
     return HuggingFaceEmbeddings(
         model_name=model_name,
         model_kwargs={"trust_remote_code": True, "device": device},
-        encode_kwargs={"batch_size": 1024}
+        encode_kwargs={"batch_size": 1024},
     )
 
 
@@ -74,8 +73,7 @@ def init_chroma_db(
     for i in tqdm(range(0, len(docs), chunk_size)):
         chunk = docs[i : i + chunk_size]
         metadatas = [
-            {"source": f"Document {ind + 1}"}
-            for ind in range(i, i + len(chunk))
+            {"source": f"Document {ind + 1}"} for ind in range(i, i + len(chunk))
         ]
         db.add_texts(
             texts=chunk,
@@ -97,10 +95,16 @@ def get_chroma_db(
     )
 
 
-def create_ensemble_retriever(chroma_db: Any, docs: list, keyword_weight: float = 0.5, **kwargs):
+def create_ensemble_retriever(
+    chroma_db: Any, docs: list, keyword_weight: float = 0.5, **kwargs
+):
     k = kwargs.get("k") if kwargs.get("k") else 20
     c = kwargs.get("c") if kwargs.get("c") else 60
-    weights = kwargs.get("weights") if kwargs.get("weights") else [1 - keyword_weight, keyword_weight]
+    weights = (
+        kwargs.get("weights")
+        if kwargs.get("weights")
+        else [1 - keyword_weight, keyword_weight]
+    )
 
     bm25_retriever = _cached_bm25_retriever(_docs_to_tuple(docs), k)
 
@@ -113,4 +117,3 @@ def create_ensemble_retriever(chroma_db: Any, docs: list, keyword_weight: float 
         weights=weights,
         c=c,
     )
-

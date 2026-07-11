@@ -10,20 +10,21 @@ import asyncio
 import time
 from functools import lru_cache, partial
 from typing import Any
-from typing_extensions import TypedDict
 
 import dspy
-from gnais.search.agent import agent_search
 from gnais.config import Config
+from gnais.search.agent import agent_search
+from gnais.search.classification import classify_search
+from gnais.search.corpus import create_ensemble_retriever, get_chroma_db, get_docs
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
-from gnais.search.classification import classify_search
-from gnais.search.corpus import get_docs, get_chroma_db, create_ensemble_retriever
-from gnais.search import tools
+from gnais.search.tools import LLM_EXECUTOR, route_model
+from typing_extensions import TypedDict
 
 
 class StreamEvent(TypedDict):
     """SSE-ready event emitted by the hybrid search stream."""
+
     source: str
     kind: str
     content: str
@@ -31,31 +32,31 @@ class StreamEvent(TypedDict):
 
 class Synthesis(dspy.Signature):
     """Synthesize the final response from all search components.
-Make sure the final synthesis is in line with the query.
+    Make sure the final synthesis is in line with the query.
 
-Format your entire response as valid HTML. Use tags such as
-<p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.
-Do not wrap the response in markdown code blocks.
+    Format your entire response as valid HTML. Use tags such as
+    <p>, <ul>, <li>, <a>, <strong>, <em>, <h3>, and <br>.
+    Do not wrap the response in markdown code blocks.
 
-CRITICAL – URL SAFETY RULES (prevents hallucination):
-1. NEVER invent, guess, or construct any URL.
-2. Only use URLs that appear verbatim in the `all_generation` input.
-3. Before outputting, verify: every `href` attribute value must be an exact substring
-   of the `all_generation` string. If you cannot verify, omit the link.
-4. Do not append, prepend, or modify URL fragments (e.g., no `#`, `?`, or path changes).
+    CRITICAL – URL SAFETY RULES (prevents hallucination):
+    1. NEVER invent, guess, or construct any URL.
+    2. Only use URLs that appear verbatim in the `all_generation` input.
+    3. Before outputting, verify: every `href` attribute value must be an exact substring
+       of the `all_generation` string. If you cannot verify, omit the link.
+    4. Do not append, prepend, or modify URL fragments (e.g., no `#`, `?`, or path changes).
 
-Structure the HTML as follows:
-- A short status banner (<div class="status-success"> or "status-partial">).
-- A summary paragraph (<p class="summary">).
-- For each group of results, an <h3> heading with the type
-  (e.g. "Genes", "Traits", "Datasets") followed by a <ul class="card-list">.
-  Each item should be a <li class="card-item"> containing:
-    - <div class="card-title"><a href="URL">Name</a></div>
-    - <div class="card-description">Description</div> (optional)
-    - <div class="card-meta">Extra info</div> (optional)
-- If there's need for a table, add a table with a <table class="data">
-- If no results were found, a <div class="note-box"> explaining why.
-- Any additional notes in a <div class="note-box"> at the end.
+    Structure the HTML as follows:
+    - A short status banner (<div class="status-success"> or "status-partial">).
+    - A summary paragraph (<p class="summary">).
+    - For each group of results, an <h3> heading with the type
+      (e.g. "Genes", "Traits", "Datasets") followed by a <ul class="card-list">.
+      Each item should be a <li class="card-item"> containing:
+        - <div class="card-title"><a href="URL">Name</a></div>
+        - <div class="card-description">Description</div> (optional)
+        - <div class="card-meta">Extra info</div> (optional)
+    - If there's need for a table, add a table with a <table class="data">
+    - If no results were found, a <div class="note-box"> explaining why.
+    - Any additional notes in a <div class="note-box"> at the end.
 
     """
 
@@ -67,7 +68,7 @@ Structure the HTML as follows:
 
 
 _synthesize = dspy.streamify(
-    dspy.Predict(Synthesis),
+    route_model()(dspy.Predict(Synthesis)),
     stream_listeners=[
         dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
     ],
@@ -100,12 +101,12 @@ async def _rag_search(query: str, user_id: str = "default_user", memory=None):
     )
     yield {"status": f"Search type is: '{classification.get('decision')}'"}
     retriever = (
-        _KW_RETRIEVER
-        if classification.get("decision") == "keyword"
-        else _SEM_RETRIEVER
+        _KW_RETRIEVER if classification.get("decision") == "keyword" else _SEM_RETRIEVER
     )
     yield {"status": "Retrieving documents…"}
-    async for item in rag_search(query=query, retriever=retriever, user_id=user_id, memory=memory):
+    async for item in rag_search(
+        query=query, retriever=retriever, user_id=user_id, memory=memory
+    ):
         yield item
 
 
@@ -158,9 +159,26 @@ async def hybrid_search(query: str, user_id: str = "default_user", memory=None):
     combined_outputs = {"rag": "", "grag": "", "agent": ""}
 
     async with asyncio.TaskGroup() as tg:
-        tg.create_task(_stream_component("rag", _rag_search, queue, query=query, user_id=user_id, memory=memory))
-        tg.create_task(_stream_component("grag", _grag_search, queue, query=query, user_id=user_id, memory=memory))
-        tg.create_task(_stream_component("agent", _agent_search, queue, query=query, user_id=user_id, memory=memory))
+        tg.create_task(
+            _stream_component(
+                "rag", _rag_search, queue, query=query, user_id=user_id, memory=memory
+            )
+        )
+        tg.create_task(
+            _stream_component(
+                "grag", _grag_search, queue, query=query, user_id=user_id, memory=memory
+            )
+        )
+        tg.create_task(
+            _stream_component(
+                "agent",
+                _agent_search,
+                queue,
+                query=query,
+                user_id=user_id,
+                memory=memory,
+            )
+        )
 
         remaining = 3
         while remaining:
