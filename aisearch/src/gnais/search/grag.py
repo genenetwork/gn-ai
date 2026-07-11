@@ -4,7 +4,6 @@ import asyncio
 import functools
 
 import dspy
-from gnais.config import Config
 from gnais.search import tools
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT, SPARQL_SYSTEM_PROMPT
 from gnais.search.tools import build_schema_hint, route_model, sparql_fetch, with_memory
