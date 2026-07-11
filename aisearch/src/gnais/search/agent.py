@@ -3,13 +3,14 @@
 from typing import Any
 
 import dspy
+from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
 from gnais.search.tools import (
     MemoryTools,
     check_link,
     make_sparql_fetch_tool,
+    route_model,
     with_memory,
 )
-from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
 
 
 class AgentSig(dspy.Signature):
@@ -46,10 +47,12 @@ def _get_stream_react(sparql_url: str) -> Any:
     if sparql_url not in _STREAM_REACT_CACHE:
         tools = [make_sparql_fetch_tool(sparql_url), check_link]
         _STREAM_REACT_CACHE[sparql_url] = dspy.streamify(
-            dspy.ReAct(
-                signature=AgentSig,
-                tools=tools,
-                max_iters=7,
+            route_model()(
+                dspy.ReAct(
+                    signature=AgentSig,
+                    tools=tools,
+                    max_iters=7,
+                ),
             ),
             stream_listeners=[
                 dspy.streaming.StreamListener(
