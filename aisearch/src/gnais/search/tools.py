@@ -454,7 +454,10 @@ class Route(dspy.Signature):
 
 
 def route_model(
-    options: list[dspy.LM] = [Config.DEFAULT_MODEL, Config.ALTERNATIVE_MODEL]
+    options: dict[str, dspy.LM] = {
+        Config.DEFAULT_MODEL: Config.DEFAULT_LLM,
+        Config.ALTERNATIVE_MODEL: Config.ALTERNATIVE_LLM,
+    }
 ):
     """Decorator function that helps choose the right model for a DSPy module"""
 
@@ -462,11 +465,11 @@ def route_model(
         @functools.wraps(func)
         def wrapper(**kwargs):
             signature = func.signature
-            models = [model.__dict__["model"] for model in options]
+            models = list(options.keys())
             best_model = dspy.Predict(Route)(signature=signature, models=models).get(
                 "best_model"
             )
-            func.set_lm(best_model)
+            func.set_lm(options[best_model])
             return func(**kwargs)
 
         return wrapper
