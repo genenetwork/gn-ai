@@ -4,9 +4,8 @@ import asyncio
 from typing import Any
 
 import dspy
-from gnais.search.tools import with_memory
 from gnais.search.prompts import GENERAL_SYSTEM_PROMPT
-from typing import Any
+from gnais.search.tools import route_model, with_memory
 
 
 class RAG(dspy.Signature):
@@ -51,14 +50,13 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
 
 
 _RAG_STREAM = dspy.streamify(
-    dspy.Predict(RAG),
+    route_model()(dspy.Predict(RAG)),
     stream_listeners=[
-        dspy.streaming.StreamListener(
-            signature_field_name="feedback", allow_reuse=True
-        )
+        dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
     ],
     include_final_prediction_in_output_stream=True,
 )
+
 
 @with_memory(memory_type="rag")
 async def rag_search(
@@ -74,9 +72,9 @@ async def rag_search(
     context = await asyncio.to_thread(retriever.invoke, query)
     yield {"status": "Streaming response…"}
     async for value in _RAG_STREAM(
-            input_text=prompt,
-            chat_history=chat_history,
-            context=context,
+        input_text=prompt,
+        chat_history=chat_history,
+        context=context,
     ):
         if isinstance(value, dspy.Prediction):
             yield {"final": value.feedback}
