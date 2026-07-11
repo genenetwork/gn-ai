@@ -9,6 +9,7 @@ from typing import Any
 import dspy
 import httpx
 import redis
+from gnais.config import Config
 
 _redis = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
@@ -452,7 +453,9 @@ class Route(dspy.Signature):
     best_model: str = dspy.OutputField(desc="The most efficient model for the task")
 
 
-def route_model(options: list[dspy.LM]):
+def route_model(
+    options: list[dspy.LM] = [Config.DEFAULT_MODEL, Config.ALTERNATIVE_MODEL]
+):
     """Decorator function that helps choose the right model for a DSPy module"""
 
     def decorator(func: dspy.Module):
