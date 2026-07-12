@@ -133,7 +133,7 @@ if __name__ == "__main__":
         torch.cuda.manual_seed_all(Config.SEED)
 
     dspy.configure(lm=Config.DEFAULT_LLM)
-    os.environ[f"{Config.MEMORY_MODEL.split('/')[0].upper()}_API_KEY"] = API_KEY
+    os.environ[f"{Config.MEMORY_MODEL.split('/')[0].upper()}_API_KEY"] = Config.API_KEY
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
