@@ -68,14 +68,14 @@ class Config:
         DEFAULT_LLM = dspy.LM(
             model=DEFAULT_MODEL,
             api_key=API_KEY,
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
         ALTERNATIVE_LLM = dspy.LM(
             model=ALTERNATIVE_MODEL,
             api_key=API_KEY,
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
@@ -84,7 +84,7 @@ class Config:
             model=f"ollama_chat/{DEFAULT_MODEL}",
             api_key="local",
             api_base=f"http://localhost:{PORT}",
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
@@ -92,7 +92,7 @@ class Config:
             model=f"ollama_chat/{ALTERNATIVE_MODEL}",
             api_key="local",
             api_base=f"http://localhost:{PORT}",
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
@@ -100,7 +100,7 @@ class Config:
         DEFAULT_LLM = dspy.LM(
             model=DEFAULT_MODEL,
             api_key=API_KEY,
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
@@ -108,7 +108,7 @@ class Config:
             model=f"ollama_chat/{ALTERNATIVE_MODEL}",
             api_key="local",
             api_base=f"http://localhost:{PORT}",
-            max_tokens=100_000,
+            max_tokens=50_000,
             temperature=1,
             verbose=False,
         )
