@@ -469,6 +469,9 @@ class RoutedModule(dspy.Module):
         self.module.set_lm(self.options[best_model])
         return self.module(**kwargs)
 
+    def get(self, field_name, default=None):
+        return getattr(self.module, field_name, default)
+
 
 def route_model(
     options: dict[str, dspy.LM] = {
