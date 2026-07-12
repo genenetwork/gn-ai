@@ -1,7 +1,7 @@
 __all__ = ("Config",)
 import os
-import dspy
 
+import dspy
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -64,12 +64,13 @@ class Config:
     if PORT is None:
         raise RuntimeError("PORT for local model is not set")
 
-    if MODEL_TYPE == 1: # only frontier models
+    if MODEL_TYPE == 1:  # only frontier models
         DEFAULT_LLM = dspy.LM(
             model=DEFAULT_MODEL,
             api_key=API_KEY,
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
         ALTERNATIVE_LLM = dspy.LM(
@@ -77,15 +78,17 @@ class Config:
             api_key=API_KEY,
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
-    elif MODEL_TYPE == 2: # only local models
+    elif MODEL_TYPE == 2:  # only local models
         DEFAULT_LLM = dspy.LM(
             model=f"ollama_chat/{DEFAULT_MODEL}",
             api_key="local",
             api_base=f"http://localhost:{PORT}",
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
         ALTERNATIVE_LLM = dspy.LM(
@@ -94,14 +97,16 @@ class Config:
             api_base=f"http://localhost:{PORT}",
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
-    elif MODEL_TYPE == 3: # smart combination of frontier and local models
+    elif MODEL_TYPE == 3:  # smart combination of frontier and local models
         DEFAULT_LLM = dspy.LM(
             model=DEFAULT_MODEL,
             api_key=API_KEY,
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
         ALTERNATIVE_LLM = dspy.LM(
@@ -110,5 +115,6 @@ class Config:
             api_base=f"http://localhost:{PORT}",
             max_tokens=50_000,
             temperature=1,
+            cache=False,  # essential for evaluation; switch on for local deploy
             verbose=False,
         )
