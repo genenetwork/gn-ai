@@ -66,7 +66,7 @@ if __name__ == "__main__":
 
     dspy.configure(lm=Config.DEFAULT_LLM)
 
-    os.environ[f"{Config.MEMORY_MODEL.split('/')[0].upper()}_API_KEY"] = API_KEY
+    os.environ[f"{Config.MEMORY_MODEL.split('/')[0].upper()}_API_KEY"] = Config.API_KEY
     memory_config = MemoryConfig(
         custom_fact_extraction_prompt=GN_FACT_EXTRACTION_PROMPT,
         custom_update_extraction_prompt=GN_UPDATE_MEMORY_PROMPT,
@@ -100,5 +100,5 @@ if __name__ == "__main__":
         },
     )
     memory = Memory(config=memory_config)
-    digest = partial(_digest, memory=memory, corpus_path=CORPUS_PATH, db_path=DB_PATH)
+    digest = partial(_digest, memory=memory, corpus_path=Corpus.CORPUS_PATH, db_path=Corpus.DB_PATH)
     print(digest(query=args.query, user_id=args.user_id))
