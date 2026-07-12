@@ -465,7 +465,9 @@ class RoutedModule(dspy.Module):
         task = str(self.module.signature)
         models = list(self.options.keys())
         best_model = self.router(task=task, models=models).get("best_model")
-        print(f"Choice made: {best_model} for {self.module}")
+        print(
+            f"Choice made: {best_model} for {self.module.__dict__['signature'].__name__}"
+        )
         self.module.set_lm(self.options[best_model])
         return self.module(**kwargs)
 
