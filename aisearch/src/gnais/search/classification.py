@@ -14,7 +14,6 @@ class Extraction(dspy.Signature):
     keywords: str = dspy.OutputField()
 
 
-@route_model()
 @lru_cache(maxsize=2048)
 def extract_keywords(query: str) -> str:
     """Extract list of keywords from query
@@ -25,16 +24,15 @@ def extract_keywords(query: str) -> str:
     Returns:
         list of keywords
     """
-    return dspy.Predict(Extraction)(
+    return route_model()(dspy.Predict(Extraction)(
         input_text=f"""
 You are extremely good at extracting keywords from a search query related to specific entities (traits, markers, etc) in GeneNetwork.
 Produce a list of space separated keywords featured in the query below. Only return that list.
 
 {query}"""
-    )
+    ))
 
 
-@route_model()
 @lru_cache(maxsize=2048)
 def classify_search(query: str) -> str:
     """Classify user query as keyword search or semantic search
@@ -45,7 +43,7 @@ def classify_search(query: str) -> str:
     Returns:
         type of search for query processing
     """
-    return dspy.Predict(Classification)(
+    return route_model()(dspy.Predict(Classification)(
         input_text=f"""
 You are an experienced search classifier.
 You can accurately tell from a query if a keyword search or semantic search is more appropriate to provide satisfactory answers to the user.
@@ -55,4 +53,4 @@ Infer the type of search that should be performed given the query below:
 
 {query}
 """
-    )
+    ))
