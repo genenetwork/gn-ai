@@ -462,7 +462,7 @@ class RoutedModule(dspy.Module):
         self.router = dspy.Predict(Route)
 
     def forward(self, **kwargs):
-        task = self.module.signature
+        task = str(self.module.signature)
         models = list(self.options.keys())
         best_model = self.router(task=task, models=models).get("best_model")
         print(f"Choice made: {best_model} for {self.module}")
