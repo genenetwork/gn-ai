@@ -9,6 +9,7 @@ from typing import Any
 import dspy
 import httpx
 import redis
+
 from gnais.config import Config
 
 _redis = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -445,12 +446,28 @@ def with_memory(memory_type: str = "interaction"):
 class Route(dspy.Signature):
     """
     Choose the most efficient model to handle the task assigned to the program between the LLMs available.
-    The most efficient model is the LLM that can follow the instructions defined in the program signature with good fidelity while saving on unneccessary cost.
+    The most efficient model is the LLM that can follow the instructions defined in the program with good fidelity while saving on unneccessary cost.
     """
 
-    signature: str = dspy.InputField(desc="The signature of the DSPy program")
+    task: str = dspy.InputField(desc="The task of the DSPy program")
     models: list[str] = dspy.InputField(desc="The 2 models or LLMs available")
     best_model: str = dspy.OutputField(desc="The most efficient model for the task")
+
+
+class RoutedModule(dspy.Module):
+    def __init__(self, module: dspy.Module, options: dict[str, dspy.LM]):
+        super().__init__()
+        self.module = module
+        self.options = options
+        self.router = dspy.Predict(Route)
+
+    def forward(self, **kwargs):
+        task = self.module.signature
+        models = list(self.options.keys())
+        best_model = self.router(task=task, models=models).get("best_model")
+        print(f"Choice made: {best_model} for {self.module}")
+        self.module.set_lm(self.options[best_model])
+        return self.module(**kwargs)
 
 
 def route_model(
@@ -459,19 +476,9 @@ def route_model(
         Config.ALTERNATIVE_MODEL: Config.ALTERNATIVE_LLM,
     }
 ):
-    """Decorator function that helps choose the right model for a DSPy module"""
+    """Decorator that returns a dspy.Module wrapping the routed module."""
 
-    def decorator(func: dspy.Module):
-        @functools.wraps(func)
-        def wrapper(**kwargs):
-            signature = func.signature
-            models = list(options.keys())
-            best_model = dspy.Predict(Route)(signature=signature, models=models).get(
-                "best_model"
-            )
-            func.set_lm(options[best_model])
-            return func(**kwargs)
-
-        return wrapper
+    def decorator(module: dspy.Module):
+        return RoutedModule(module, options)
 
     return decorator
