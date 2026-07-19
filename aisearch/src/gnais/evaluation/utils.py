@@ -7,9 +7,10 @@ from typing import Any
 
 import dspy
 import pandas as pd
+
 from gnais.config import Config
 from gnais.search.agent import agent_search
-from gnais.search.classification import classify_search
+from gnais.search.classification import classify_search, extract_keywords
 from gnais.search.corpus import create_ensemble_retriever, get_chroma_db, get_docs
 from gnais.search.grag import graph_rag_search
 from gnais.search.rag import rag_search
@@ -92,7 +93,11 @@ def rag_digest(query: str, memory: Any = None) -> str:
 
         parts = []
         async for chunk in rag_search(
-            query=query,
+            query=(
+                extract_keywords(query).get("keywords")
+                if decision == "keyword"
+                else query
+            ),
             retriever=retriever,
             memory=memory,
             user_id=str(uuid.uuid4()),
