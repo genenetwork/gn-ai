@@ -89,13 +89,23 @@ class GraphRAG(dspy.Signature):
     )
 
 
-_KW_SPARQL_GEN = dspy.Predict(KeywordSPARQLGenerator)
+def _make_grag_stream():
+    grag = dspy.Predict(GraphRAG)
+    routed_grag = route_model()(grag)
+    chosen_model = routed_grag.choose_model()
+    print(f"Choice made: {chosen_model} for Graph RAG")
+    grag.set_lm(routed_grag.options[chosen_model])
 
-_GRAG_STREAM = dspy.streamify(
-    route_model()(dspy.Predict(GraphRAG)),
-    stream_listeners=[dspy.streaming.StreamListener(signature_field_name="feedback")],
-    include_final_prediction_in_output_stream=True,
-)
+    return dspy.streamify(
+        grag,
+        stream_listeners=[
+            dspy.streaming.StreamListener(
+                signature_field_name="feedback",
+                allow_reuse=True,
+            )
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 @with_memory(memory_type="grag")
@@ -111,11 +121,18 @@ async def graph_rag_search(
     sparql_prompt = f"{SPARQL_SYSTEM_PROMPT}\nQuery: {query}"
     schema_hint = build_schema_hint(sparql_url)
     yield {"status": "Generating keywords and SPARQL queries…"}
+
+    kw_sparql = dspy.Predict(KeywordSPARQLGenerator)
+    routed_kw = route_model()(kw_sparql)
+    chosen_model = routed_kw.choose_model()
+    print(f"Choice made: {chosen_model} for KeywordSPARQL")
+    kw_sparql.set_lm(routed_kw.options[chosen_model])
+
     loop = asyncio.get_running_loop()
     combined = await loop.run_in_executor(
         tools.LLM_EXECUTOR,
         functools.partial(
-            _KW_SPARQL_GEN,
+            kw_sparql,
             original_query=sparql_prompt,
             schema_hint=schema_hint,
         ),
@@ -132,7 +149,7 @@ async def graph_rag_search(
     sparql_results = await sparql_fetch(sparql_queries, sparql_url)
 
     yield {"status": "Streaming response…"}
-    async for value in _GRAG_STREAM(
+    async for value in _make_grag_stream()(
         original_query=grag_prompt,
         sparql_results=sparql_results,
         chat_history=chat_history,

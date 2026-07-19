@@ -49,13 +49,24 @@ PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
     )
 
 
-_RAG_STREAM = dspy.streamify(
-    route_model()(dspy.Predict(RAG)),
-    stream_listeners=[
-        dspy.streaming.StreamListener(signature_field_name="feedback", allow_reuse=True)
-    ],
-    include_final_prediction_in_output_stream=True,
-)
+def _make_rag_stream():
+    routed = route_model()(dspy.Predict(RAG))
+    chosen_model = routed.choose_model()
+    print(f"Choice made: {chosen_model} for RAG")
+    options = routed.options
+    rag = routed.module
+    rag.set_lm(options[chosen_model])
+
+    return dspy.streamify(
+        rag,
+        stream_listeners=[
+            dspy.streaming.StreamListener(
+                signature_field_name="feedback",
+                allow_reuse=True,
+            )
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 @with_memory(memory_type="rag")
@@ -71,7 +82,7 @@ async def rag_search(
     yield {"status": "Fetching context…"}
     context = await asyncio.to_thread(retriever.invoke, query)
     yield {"status": "Streaming response…"}
-    async for value in _RAG_STREAM(
+    async for value in _make_rag_stream()(
         input_text=prompt,
         chat_history=chat_history,
         context=context,
