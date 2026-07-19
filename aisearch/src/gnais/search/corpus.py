@@ -98,7 +98,7 @@ def get_chroma_db(
 def create_ensemble_retriever(
     chroma_db: Any, docs: list, keyword_weight: float = 0.5, **kwargs
 ):
-    k = kwargs.get("k") if kwargs.get("k") else 20
+    k = kwargs.get("k") if kwargs.get("k") else 3
     c = kwargs.get("c") if kwargs.get("c") else 60
     weights = (
         kwargs.get("weights")
