@@ -106,6 +106,6 @@ if __name__ == "__main__":
     )
     memory = Memory(config=memory_config)
     digest = partial(
-        _digest, memory=memory, corpus_path=Corpus.CORPUS_PATH, db_path=Corpus.DB_PATH
+        _digest, memory=memory, corpus_path=Config.CORPUS_PATH, db_path=Config.DB_PATH
     )
     print(digest(query=args.query, user_id=args.user_id))
