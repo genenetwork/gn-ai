@@ -107,15 +107,22 @@ def sparql_digest(
     query: str, handler: Any, memory: Any = None, user_id: str = "default_user"
 ) -> str:
     async def _run():
-        parts = []
+        output = ""
         async for chunk in handler(
             query=query,
             sparql_url=Config.SPARQL_ENDPOINT,
             memory=memory,
             user_id=user_id,
         ):
-            parts.append(str(chunk))
-        return "".join(parts)
+            if isinstance(chunk, dict) and "final" in chunk:
+                final = chunk["final"]
+                output = final
+                print(final, end="", flush=True)
+            else:
+                output += str(chunk)
+                print(chunk, end="", flush=True)
+        print()
+        return output
 
     return _run_async(_run)
 
