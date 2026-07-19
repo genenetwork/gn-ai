@@ -7,6 +7,9 @@ from functools import partial
 
 import dspy
 import torch
+from mem0 import Memory
+from mem0.configs.base import MemoryConfig
+
 from gnais.config import Config
 from gnais.search.classification import classify_search, extract_keywords
 from gnais.search.corpus import (
@@ -17,8 +20,6 @@ from gnais.search.corpus import (
 )
 from gnais.search.prompts import GN_FACT_EXTRACTION_PROMPT, GN_UPDATE_MEMORY_PROMPT
 from gnais.search.rag import rag_search
-from mem0 import Memory
-from mem0.configs.base import MemoryConfig
 
 
 def _digest(
@@ -43,7 +44,11 @@ def _digest(
 
         parts = []
         async for chunk in rag_search(
-            query=query,
+            query=(
+                extract_keywords(query).get("keywords")
+                if decision == "keyword"
+                else query
+            ),
             retriever=retriever,
             memory=memory,
             user_id=user_id,
@@ -100,5 +105,7 @@ if __name__ == "__main__":
         },
     )
     memory = Memory(config=memory_config)
-    digest = partial(_digest, memory=memory, corpus_path=Corpus.CORPUS_PATH, db_path=Corpus.DB_PATH)
+    digest = partial(
+        _digest, memory=memory, corpus_path=Corpus.CORPUS_PATH, db_path=Corpus.DB_PATH
+    )
     print(digest(query=args.query, user_id=args.user_id))
