@@ -9,7 +9,6 @@ from typing import Any
 import dspy
 import httpx
 import redis
-
 from gnais.config import Config
 
 _redis = redis.Redis(host="localhost", port=6379, decode_responses=True)
@@ -56,103 +55,6 @@ async def _exec_sparql(
     return {}
 
 
-@functools.lru_cache(maxsize=64)
-def _fetch_schema(sparql_uri: str) -> tuple[set[str], set[str], set[str]]:
-    """Fetch literal and object properties from the live Virtuoso endpoint.
-
-    Returns (literal_props, object_props, snapshot_objs).
-    The three queries run concurrently in a thread pool.
-    """
-
-    def _bindings(result: dict, var: str) -> set[str]:
-        return {
-            b[var]["value"]
-            for b in result.get("results", {}).get("bindings", [])
-            if b.get(var)
-        }
-
-    queries = {
-        "literal": """
-SELECT DISTINCT ?p
-  FROM <http://rdf.genenetwork.org/v1>
-WHERE { ?s ?p ?o . FILTER isLiteral(?o) }
-        """,
-        "object": """
-SELECT DISTINCT ?p
-  FROM <http://rdf.genenetwork.org/v1>
-WHERE { ?s ?p ?o . FILTER isIRI(?o) }
-        """,
-        "snapshot": """
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX owl: <http://www.w3.org/2002/07/owl#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-
-SELECT SAMPLE(?obj) AS ?o
-  FROM <http://rdf.genenetwork.org/v1>
-WHERE {
-    ?subject skos:member ?obj .
-    BIND(skos:member AS ?predicate)
-    BIND(LCASE(REPLACE(STR(?obj), "^([^_]*_[^_]*_).*$", "$1")) AS ?stem)
-    FILTER (?subject != ?obj)
-    FILTER (0.1 > <SHORT_OR_LONG::bif:rnd> (10, ?subject, ?predicate))
-}
-GROUP BY ?subject ?predicate ?stem
-        """,
-    }
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(queries)) as executor:
-        futures = {
-            name: executor.submit(
-                lambda uri, query: asyncio.run(_exec_sparql(uri, query)),
-                sparql_uri,
-                query,
-            )
-            for name, query in queries.items()
-        }
-        results = {name: fut.result() for name, fut in futures.items()}
-
-    literal_props = _bindings(results["literal"], "p")
-    object_props = _bindings(results["object"], "p")
-    snapshot_objs = _bindings(results["snapshot"], "o")
-
-    # Cap sizes so the prompt doesn't bloat to thousands of tokens
-    literal_props = set(list(literal_props)[:100])
-    object_props = set(list(object_props)[:100])
-    snapshot_objs = set(list(snapshot_objs)[:50])
-
-    return literal_props, object_props, snapshot_objs
-
-
-# Compact namespace → prefix map for prompt output
-_PREFIX_MAP = {
-    "http://rdf.genenetwork.org/v1/term/": "gnt",
-    "http://rdf.genenetwork.org/v1/category/": "gnc",
-    "http://rdf.genenetwork.org/v1/id/": "gn",
-    "http://purl.org/dc/terms/": "dct",
-    "http://www.w3.org/ns/dcat#": "dcat",
-    "http://www.w3.org/2000/01/rdf-schema#": "rdfs",
-    "http://www.w3.org/2004/02/skos/core#": "skos",
-    "http://www.w3.org/1999/02/22-rdf-syntax-ns#": "rdf",
-    "http://www.w3.org/2002/07/owl#": "owl",
-    "http://purl.org/linked-data/cube#": "qb",
-    "http://purl.org/linked-data/sdmx/2009/measure#": "sdmx-measure",
-    "http://rdf-vocabulary.ddialliance.org/xkos#": "xkos",
-    "https://schema.org/": "schema",
-    "http://rdf.ncbi.nlm.nih.gov/pubmed/": "pubmed",
-    "http://xmlns.com/foaf/0.1/": "foaf",
-    "http://purl.org/spar/fabio/": "fabio",
-    "http://prismstandard.org/namespaces/basic/2.0/": "prism",
-}
-
-
-def _uri_to_qname(uri: str) -> str:
-    """Convert a full URI to a prefixed name, or return the URI in angle brackets."""
-    for ns, prefix in sorted(_PREFIX_MAP.items(), key=lambda x: -len(x[0])):
-        if uri.startswith(ns):
-            return f"{prefix}:{uri[len(ns):]}"
-    return f"<{uri}>"
-
-
 def build_schema_hint(sparql_uri: str) -> str:
     """Build a compact schema hint from the live Virtuoso endpoint.
 
@@ -163,46 +65,363 @@ def build_schema_hint(sparql_uri: str) -> str:
     if cached:
         return cached
 
-    literal_props, object_props, snapshot_objs = _fetch_schema(sparql_uri)
-    hint = f"""=== GENENETWORK SCHEMA (from Virtuoso) ===
-PREFIX dcat: <http://www.w3.org/ns/dcat#>
-PREFIX gn: <http://rdf.genenetwork.org/v1/id/>
-PREFIX dct: <http://purl.org/dc/terms/>
-PREFIX gnc: <http://rdf.genenetwork.org/v1/category/>
-PREFIX gnt: <http://rdf.genenetwork.org/v1/term/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
-PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+    hint = """
+=== HIGH LEVEL STRUCTURE OF THE GENENETWORK RDF GRAPH ===
+```mermaid
+graph TD
+    A[gnc:resource_classification_scheme<br/>a skos:ConceptScheme] -->|xkos:levels| B[gnc:taxonomic_family<br/>a xkos:ClassificationLevel<br/>xkos:depth 1]
+    A -->|xkos:levels| C[gnc:species<br/>a xkos:ClassificationLevel<br/>xkos:depth 2]
+    A -->|xkos:levels| D[gnc:population_category<br/>a xkos:ClassificationLevel<br/>xkos:depth 3]
+    A -->|xkos:levels| E[gnc:set<br/>a xkos:ClassificationLevel<br/>xkos:depth 4]
 
+    B -->|xkos:nextLevel| C
+    C -->|xkos:nextLevel| D
+    D -->|xkos:nextLevel| E
 
-LITERAL PROPERTIES (object is a string/number/date):
-{" ,".join([_uri_to_qname(uri) for uri in literal_props])}
+    B -->|gnt:has_taxonomic_family| F[gni:family_*<br/>no explicit rdf:type]
+    C -->|skos:member| G[gni:species_*<br/>a gnc:species]
+    D -->|gnt:has_reference_population| H[gni:population_*<br/>a gnc:reference_population]
+    E -->|skos:member| I[gni:set_*<br/>a gnc:set]
 
+    F -->|gnt:has_species| G
+    G -->|gnt:has_strain| I
+    H -->|gnt:has_strain| I
 
-OBJECT PROPERTIES (object is a URI / another resource):
-{" ,".join([_uri_to_qname(uri) for uri in object_props])}
+    I -->|gnt:has_species| G
+    I -->|gnt:has_reference_population| H
 
+    G -->|gnt:has_uniprot_taxon_id| J[uniprot taxon ID]
 
-SNAPSHOT_OBJECTS (use to build targeted queries):
-{" ,".join([_uri_to_qname(uri) for uri in snapshot_objs])}
+    I -->|gnt:has_genotype_data| K[gni:dataset_*]
+    I -->|gnt:has_phenotype_data| K
+    I -->|gnt:has_probeset_data| K
+    I -->|gnt:uses_mapping_method| L[gni:mapping_method_*]
 
+    K -->|gnt:has_molecular_trait| M[gni:trait_*]
+    K -->|gnt:has_phenotype_trait| M
+    K -->|gnt:uses_genechip| N[gni:platform_*]
+    K -->|gnt:uses_normalization_method| O[gni:avg_method_*]
+    K -->|gnt:has_strain| I
+```
 
-CRITICAL RULES:
-1. Only use properties listed above. Do NOT invent new ones.
-2. Literal properties give strings/numbers — use FILTER, not ?o a ...
-3. Object properties link to other resources — you can chain ?o a <Class>.
-4. Do NOT use taxon: for species. Use gn:Mus_musculus, gn:Rattus_norvegicus, gn:Homo_sapiens, etc.
+=== DETAILED SCHEMA OF GENENETWORK RDF DATABASE ===
+```turtle
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xkos: <http://rdf-vocabulary.ddialliance.org/xkos#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix dcat: <http://www.w3.org/ns/dcat#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix gnc: <http://rdf.genenetwork.org/v1/category/> .
+@prefix gni: <http://rdf.genenetwork.org/v1/id/> .
+@prefix gnt: <http://rdf.genenetwork.org/v1/term/> .
+@prefix uniprot: <http://purl.uniprot.org/taxonomy/> .
+
+# -------------------------------------------------
+# Schema and its four levels
+# -------------------------------------------------
+
+gnc:resource_classification_scheme a skos:ConceptScheme ;
+    rdfs:label "GeneNetwork Resource Classification Scheme" ;
+    skos:prefLabel "GeneNetwork Resource Classification Scheme" ;
+    skos:definition "A hierarchical classification scheme for organizing GeneNetwork resources by dataset type, resource set (inbredset group), or species." ;
+    xkos:numberOfLevels 4 ;
+    xkos:levels gnc:taxonomic_family , gnc:species , gnc:population_category , gnc:set .
+
+# Level containers. Each is an xkos:ClassificationLevel and also a class for its members.
+gnc:taxonomic_family a xkos:ClassificationLevel , rdfs:Class ;
+    rdfs:label "Family" ;
+    skos:prefLabel "Family" ;
+    skos:definition "An organizational classification level used in GeneNetwork to group resources into families." ;
+    xkos:depth 1 ;
+    xkos:nextLevel gnc:species ;
+    skos:inScheme gnc:resource_classification_scheme .
+
+gnc:species a xkos:ClassificationLevel , rdfs:Class ;
+    rdfs:label "Species" ;
+    skos:prefLabel "Species" ;
+    skos:definition "A classification level that associates a given resource to a species in GeneNetwork." ;
+    xkos:depth 2 ;
+    xkos:previousLevel gnc:taxonomic_family ;
+    xkos:nextLevel gnc:population_category ;
+    skos:inScheme gnc:resource_classification_scheme .
+
+gnc:population_category a xkos:ClassificationLevel , rdfs:Class ;
+    rdfs:label "Population Category" ;
+    skos:prefLabel "Population Category" ;
+    xkos:depth 3 ;
+    xkos:previousLevel gnc:species ;
+    xkos:nextLevel gnc:set ;
+    skos:inScheme gnc:resource_classification_scheme .
+
+gnc:set a xkos:ClassificationLevel , rdfs:Class ;
+    rdfs:label "Set" ;
+    skos:prefLabel "Set" ;
+    skos:definition "A category representing groups of genetically related strains or individuals (inbred sets, recombinant inbred lines, etc.)." ;
+    xkos:depth 4 ;
+    xkos:previousLevel gnc:population_category ;
+    skos:inScheme gnc:resource_classification_scheme .
+
+# -------------------------------------------------
+# Classes for non-level member instances
+# -------------------------------------------------
+
+gnc:reference_population a rdfs:Class ;
+    rdfs:label "Reference Population" ;
+    rdfs:comment "Class of the entities linked from gnc:population_category via gnt:has_reference_population." .
+
+# Note: gni:family_* entities are linked from gnc:taxonomic_family but do not carry an explicit rdf:type in the source data.
+
+# -------------------------------------------------
+# Properties
+# -------------------------------------------------
+
+# XKOS / SKOS structural properties
+xkos:levels a rdf:Property ;
+    rdfs:label "levels" ;
+    rdfs:domain skos:ConceptScheme ;
+    rdfs:range xkos:ClassificationLevel .
+
+xkos:numberOfLevels a rdf:Property ;
+    rdfs:label "number of levels" ;
+    rdfs:domain skos:ConceptScheme ;
+    rdfs:range xsd:integer .
+
+xkos:nextLevel a rdf:Property ;
+    rdfs:label "next level" ;
+    rdfs:domain xkos:ClassificationLevel ;
+    rdfs:range xkos:ClassificationLevel .
+
+xkos:previousLevel a rdf:Property ;
+    rdfs:label "previous level" ;
+    rdfs:domain xkos:ClassificationLevel ;
+    rdfs:range xkos:ClassificationLevel .
+
+xkos:depth a rdf:Property ;
+    rdfs:label "depth" ;
+    rdfs:domain xkos:ClassificationLevel ;
+    rdfs:range xsd:integer .
+
+skos:member a rdf:Property ;
+    rdfs:label "member" ;
+    rdfs:domain skos:Collection ;
+    rdfs:range skos:Concept ;
+    rdfs:comment "Used here by gnc:species and gnc:set to link to their member instances." .
+
+# GeneNetwork-specific membership properties
+
+gnt:has_taxonomic_family a rdf:Property ;
+    rdfs:label "has taxonomic family" ;
+    rdfs:domain gnc:taxonomic_family ;
+    rdfs:range rdfs:Resource ;
+    rdfs:comment "Links the taxonomic_family level to gni:family_* entities." .
+
+gnt:has_reference_population a rdf:Property ;
+    rdfs:label "has reference population" ;
+    rdfs:domain [ a rdfs:Class ; owl:unionOf ( gnc:population_category gnc:set ) ] ;
+    rdfs:range gnc:reference_population ;
+    rdfs:comment "Links the population_category level to gni:population_* entities; also used from gni:set_* back to populations." .
+
+gnt:has_species a rdf:Property ;
+    rdfs:label "has species" ;
+    rdfs:domain [ a rdfs:Class ; owl:unionOf ( gnc:taxonomic_family gnc:set ) ] ;
+    rdfs:range gnc:species ;
+    rdfs:comment "Links family entities to species, and set entities back to species." .
+
+gnt:has_strain a rdf:Property ;
+    rdfs:label "has strain" ;
+    rdfs:domain [ a rdfs:Class ; owl:unionOf ( gnc:species gnc:reference_population ) ] ;
+    rdfs:range gnc:set ;
+    rdfs:comment "Links species or reference populations to gni:set_* entities." .
+
+# GeneNetwork-specific descriptive properties on instances
+
+gnt:has_uniprot_taxon_id a rdf:Property ;
+    rdfs:label "has UniProt taxon ID" ;
+    rdfs:domain gnc:species ;
+    rdfs:range uniprot:Taxon .
+
+gnt:short_name a rdf:Property ;
+    rdfs:label "short name" ;
+    rdfs:domain gnc:species ;
+    rdfs:range xsd:string .
+
+gnt:has_family_order_id a rdf:Property ;
+    rdfs:label "has family order ID" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range xsd:integer ;
+    rdfs:comment "Used on gni:family_* entities for ordering." .
+
+gnt:has_population_order_id a rdf:Property ;
+    rdfs:label "has population order ID" ;
+    rdfs:domain gnc:reference_population ;
+    rdfs:range xsd:integer .
+
+gnt:has_set_code a rdf:Property ;
+    rdfs:label "has set code" ;
+    rdfs:domain gnc:set ;
+    rdfs:range xsd:string .
+
+# Dataset linkage properties from gni:set_* entities
+
+gnt:has_genotype_data a rdf:Property ;
+    rdfs:label "has genotype data" ;
+    rdfs:domain gnc:set ;
+    rdfs:range dcat:Dataset .
+
+gnt:has_phenotype_data a rdf:Property ;
+    rdfs:label "has phenotype data" ;
+    rdfs:domain gnc:set ;
+    rdfs:range dcat:Dataset .
+
+gnt:has_probeset_data a rdf:Property ;
+    rdfs:label "has probeset data" ;
+    rdfs:domain gnc:set ;
+    rdfs:range dcat:Dataset .
+
+gnt:uses_mapping_method a rdf:Property ;
+    rdfs:label "uses mapping method" ;
+    rdfs:domain gnc:set ;
+    rdfs:range skos:Concept ;
+    rdfs:comment "Refers to concepts in the gnc:mapping_method SKOS scheme." .
+
+# Dataset-level properties
+
+gnt:has_molecular_trait a rdf:Property ;
+    rdfs:label "has molecular trait" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range skos:Concept ;
+    rdfs:comment "Refers to concepts in the gnc:molecular_trait collection." .
+
+gnt:has_phenotype_trait a rdf:Property ;
+    rdfs:label "has phenotype trait" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range skos:Concept ;
+    rdfs:comment "Used by phenotype datasets." .
+
+gnt:uses_genechip a rdf:Property ;
+    rdfs:label "uses genechip" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range rdfs:Resource ;
+    rdfs:comment "Refers to gni:platform_* entities." .
+
+gnt:uses_normalization_method a rdf:Property ;
+    rdfs:label "uses normalization method" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range skos:Concept ;
+    rdfs:comment "Refers to concepts in the gnc:avg_method SKOS scheme." .
+
+# Common annotation properties
+
+rdfs:label a rdf:Property ;
+    rdfs:label "label" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range xsd:string .
+
+skos:prefLabel a rdf:Property ;
+    rdfs:label "preferred label" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range xsd:string .
+
+skos:altLabel a rdf:Property ;
+    rdfs:label "alternative label" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range xsd:string .
+
+skos:definition a rdf:Property ;
+    rdfs:label "definition" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range xsd:string .
+
+dcterms:description a rdf:Property ;
+    rdfs:label "description" ;
+    rdfs:domain rdfs:Resource ;
+    rdfs:range rdf:HTML ;
+    rdfs:comment "On gni:set_* entities this is often an rdf:HTML literal." .
+
+dcterms:created a rdf:Property ;
+    rdfs:label "created date" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range xsd:datetime .
+
+dcterms:identifier a rdf:Property ;
+    rdfs:label "identifier" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range xsd:string .
+
+dcterms:title a rdf:Property ;
+    rdfs:label "title" ;
+    rdfs:domain dcat:Dataset ;
+    rdfs:range xsd:string .
+```
+
+=== EXAMPLES OF SUCCESSFUL QUERIES WITH KEY QUERY PATTERNS ===
+
+Question: List all classification levels in order
+SPARQL Query:
+```sparql
+SELECT ?level ?depth ?label
+WHERE {
+  gnc:resource_classification_scheme xkos:levels ?level .
+  ?level xkos:depth ?depth ;
+         skos:prefLabel ?label .
+}
+ORDER BY ?depth
+```
+
+Question: Find all sets belonging to a species
+SPARQL Query:
+```sparql
+SELECT ?species ?set
+WHERE {
+  ?species a gnc:species ;
+           gnt:has_strain ?set .
+}
+```
+
+Question: Find all datasets reachable from a species (through sets)
+SPARQL Query:
+```sparql
+SELECT ?species ?set ?dataset
+WHERE {
+  ?species a gnc:species ;
+           gnt:has_strain ?set .
+  ?set gnt:has_genotype_data|gnt:has_phenotype_data|gnt:has_probeset_data ?dataset .
+}
+```
+
+Question: Find all sets for a given reference population
+SPARQL Query:
+```sparql
+SELECT ?population ?set
+WHERE {
+  ?population a gnc:reference_population ;
+              gnt:has_strain ?set .
+}
+```
+
+Question: Traverse family → species → set → dataset
+SPARQL Query:
+```sparql
+SELECT ?family ?species ?set ?dataset
+WHERE {
+  gnc:taxonomic_family gnt:has_taxonomic_family ?family .
+  ?family gnt:has_species ?species .
+  ?species gnt:has_strain ?set .
+  ?set gnt:has_genotype_data|gnt:has_phenotype_data|gnt:has_probeset_data ?dataset .
+}
+```
     """
     _redis.setex(cache_key, 604800, hint)  # 1 week
     return hint
 
 
 class QueryTranslation(dspy.Signature):
-    """Compare object snapshot in schema hint to keywords in the original query to find best semantic matches.
-    Use matches to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
+    """Use schema hints to generate valid SPARQL SELECT queries that can retrieve relevant information for the query.
 
-    CRITICAL SCHEMA RULES (derived from GeneNetwork RDF transforms):
+    CRITICAL SCHEMA RULES (derived from GeneNetwork RDF schema):
     1. Every query MUST start with the PREFIX declarations. Only use declared prefixes.
     2. ALWAYS include `FROM <http://rdf.genenetwork.org/v1>` between SELECT and WHERE.
     3. Strain URIs: use gn:set_BXD, gn:set_B6D2F1, gn:set_HMDP — NEVER gn:BXD, gn:B6D2F1, gn:HMDP.
@@ -275,10 +494,14 @@ async def sparql_fetch(
 
 
 @functools.lru_cache(maxsize=64)
-def make_sparql_fetch_tool(sparql_uri: str) -> dspy.Tool:
+def make_sparql_fetch_tool(
+    sparql_uri: str, lm: dspy.LM = Config.DEFAULT_LLM
+) -> dspy.Tool:
     def _fetch(query: str) -> Any:
         schema_hint = build_schema_hint(sparql_uri)
-        pred = dspy.Predict(QueryTranslation)(
+        pred = dspy.Predict(QueryTranslation)
+        pred.set_lm(lm)
+        pred = pred(
             original_query=query,
             schema_hint=schema_hint,
         )
@@ -461,14 +684,17 @@ class RoutedModule(dspy.Module):
         self.options = options
         self.router = dspy.Predict(Route)
 
-    def forward(self, **kwargs):
+    def choose_model(self) -> str:
         task = str(self.module.signature)
         models = list(self.options.keys())
-        best_model = self.router(task=task, models=models).get("best_model")
+        return self.router(task=task, models=models).get("best_model")
+
+    def forward(self, **kwargs):
+        chosen_model = self.choose_model()
         print(
-            f"Choice made: {best_model} for {self.module.__dict__['signature'].__name__}"
+            f"Choice made: {chosen_model} for {self.module.__dict__['signature'].__name__}"
         )
-        self.module.set_lm(self.options[best_model])
+        self.module.set_lm(self.options[chosen_model])
         return self.module(**kwargs)
 
     def get(self, field_name, default=None):

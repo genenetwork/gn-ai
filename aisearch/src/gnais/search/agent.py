@@ -46,14 +46,21 @@ def _get_stream_react(sparql_url: str) -> Any:
     """Return a cached (or freshly built) streaming ReAct agent."""
     if sparql_url not in _STREAM_REACT_CACHE:
         tools = [make_sparql_fetch_tool(sparql_url), check_link]
+        react = dspy.ReAct(
+            signature=AgentSig,
+            tools=tools,
+            max_iters=7,
+        )
+        routed = route_model()(react)
+        chosen_model = routed.choose_model()
+        react.set_lm(routed.options[chosen_model])
+        react.tools = [
+            make_sparql_fetch_tool(sparql_url, routed.options[chosen_model]),
+            check_link,
+        ]
+        print(f"Choice made: {chosen_model} for Agent")
         _STREAM_REACT_CACHE[sparql_url] = dspy.streamify(
-            route_model()(
-                dspy.ReAct(
-                    signature=AgentSig,
-                    tools=tools,
-                    max_iters=7,
-                ),
-            ),
+            react,
             stream_listeners=[
                 dspy.streaming.StreamListener(
                     signature_field_name="next_thought",
