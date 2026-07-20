@@ -670,6 +670,8 @@ class Route(dspy.Signature):
     """
     Choose the most efficient model to handle the task assigned to the program between the LLMs available.
     The most efficient model is the LLM that can follow the instructions defined in the program with good fidelity while saving on unneccessary cost.
+    The length and complexity of instructions in the task description should orient choice.
+    Tasks with very complex instructions should be handled by the bigger model while those relatively simple can be offloaded to the smaller model.
     """
 
     task: str = dspy.InputField(desc="The task of the DSPy program")
