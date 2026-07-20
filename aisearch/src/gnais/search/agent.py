@@ -39,38 +39,32 @@ clear final answer, but all content must remain valid HTML."""
     )
 
 
-_STREAM_REACT_CACHE: dict[str, Any] = {}
-
-
-def _get_stream_react(sparql_url: str) -> Any:
-    """Return a cached (or freshly built) streaming ReAct agent."""
-    if sparql_url not in _STREAM_REACT_CACHE:
-        tools = [make_sparql_fetch_tool(sparql_url), check_link]
-        react = dspy.ReAct(
-            signature=AgentSig,
-            tools=tools,
-            max_iters=7,
-        )
-        routed = route_model()(react)
-        chosen_model = routed.choose_model()
-        react.set_lm(routed.options[chosen_model])
-        react.tools = [
-            make_sparql_fetch_tool(sparql_url, routed.options[chosen_model]),
-            check_link,
-        ]
-        print(f"Choice made: {chosen_model} for Agent")
-        _STREAM_REACT_CACHE[sparql_url] = dspy.streamify(
-            react,
-            stream_listeners=[
-                dspy.streaming.StreamListener(
-                    signature_field_name="next_thought",
-                    allow_reuse=True,
-                ),
-                dspy.streaming.StreamListener(signature_field_name="solution"),
-            ],
-            include_final_prediction_in_output_stream=True,
-        )
-    return _STREAM_REACT_CACHE[sparql_url]
+def _make_agent_stream(sparql_url: str):
+    routed = route_model()(dspy.Predict(AgentSig))
+    chosen_model = routed.choose_model()
+    chosen_lm = routed.options[chosen_model]
+    print(f"Choice made: {chosen_model} for Agent")
+    tools = [
+        make_sparql_fetch_tool(sparql_url, chosen_lm),
+        check_link,
+    ]
+    react = dspy.ReAct(
+        signature=AgentSig,
+        tools=tools,
+        max_iters=7,
+    )
+    react.set_lm(chosen_lm)
+    return dspy.streamify(
+        react,
+        stream_listeners=[
+            dspy.streaming.StreamListener(
+                signature_field_name="next_thought",
+                allow_reuse=True,
+            ),
+            dspy.streaming.StreamListener(signature_field_name="solution"),
+        ],
+        include_final_prediction_in_output_stream=True,
+    )
 
 
 @with_memory(memory_type="agent")
@@ -82,20 +76,13 @@ async def agent_search(
     memory=None,
     chat_history: list = [],
 ):
-    """Run agent-based search with SPARQL tool calling and optional memory.
-
-    Yields stream chunks and a final prediction dict.
-    """
     yield {"status": "Planning search strategy…"}
-    stream_react = _get_stream_react(sparql_url)
     yield {"status": "Streaming response…"}
-    async for value in stream_react(
+    async for value in _make_agent_stream(sparql_url)(
         query=f"{system_prompt}\nQuery: {query}",
         chat_history=chat_history,
     ):
         if isinstance(value, dspy.Prediction):
-            solution = getattr(value, "solution", None)
-            if solution:
-                yield {"final": solution}
+            yield {"final": value.solution}
         else:
-            yield getattr(value, "chunk", str(value))
+            yield value.chunk
