@@ -61,7 +61,6 @@ def run_eval(
         result = runner(query=query)
         end = time.time()
         generated_response = result.get("answer")
-        n_token = list(result.get_lm_usage().values())[0]["total_tokens"]
 
         with dspy.context(lm=judge_llm):
             precision, recall, f1 = mark(query, generated_response, true_response)
@@ -69,14 +68,12 @@ def run_eval(
         recalls.append(recall)
         f1s.append(f1)
         speeds.append(end - start)
-        n_tokens.append(n_token)
 
     metrics = {
         "precision": np.mean(precisions).item(),
         "recall": np.mean(recalls).item(),
         "f1": np.mean(f1s).item(),
         "speed": np.mean(speeds).item(),
-        "n_token": np.mean(n_tokens).item(),
     }
     return metrics
 
@@ -102,7 +99,7 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(Config.SEED)
 
-    dspy.configure(lm=Config.DEFAULT_LLM, track_usage=True)
+    dspy.configure(lm=Config.DEFAULT_LLM)
 
     judge_llm = dspy.LM(
         model=JUDGE_MODEL,
