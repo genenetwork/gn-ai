@@ -85,4 +85,4 @@ async def agent_search(
         if isinstance(value, dspy.Prediction):
             yield {"final": value.solution}
         else:
-            yield value.chunk
+            yield getattr(value, "chunk", str(value))
