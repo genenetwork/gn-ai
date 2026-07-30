@@ -23,17 +23,17 @@ def format_results(path: str) -> pd.DataFrame:
     for f in files:
         model = f.strip("_dspy_results.csv")
         data = pd.read_csv(f"{path}/{f}")
-        new = pd.DataFrame(data.aggregate("median"), columns=["aggregate"])
-        trans_new["model"] = model
-        trans_new["system"] = list(trans_data.index)
-        df_list.append(trans_new)
+        new = pd.DataFrame(data.aggregate("median"), columns=["satisfaction frequency"])
+        new["model"] = model
+        new["system"] = list(new.index)
+        df_list.append(new)
     df_concat = pd.concat(df_list)
     return df_concat
 
 
 def plot_results(data: pd.DataFrame, output_path: str):
-    sns.barplot(data=data, x="system", y="aggregate", hue="model", palette="Set1")
-    plt.set_title("Performance with customized metric", fontsize=15)
+    sns.barplot(data=data, x="system", y="satisfaction frequency", hue="model", palette="Set1")
+    plt.suptitle("Performance with customized metric", fontsize=15)
     plt.savefig(output_path, dpi=1000)
     plt.show()
 
