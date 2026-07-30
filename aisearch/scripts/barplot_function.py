@@ -21,7 +21,7 @@ def format_results(path: str) -> pd.DataFrame:
     files = os.listdir(path)
     df_list = []
     for f in files:
-        model = f.split("_")[0]
+        model = f.strip("_dspy_results.csv")
         data = pd.read_csv(f"{path}/{f}")
         new = pd.DataFrame(data.aggregate("median"), columns=["aggregate"])
         trans_new["model"] = model
@@ -32,9 +32,7 @@ def format_results(path: str) -> pd.DataFrame:
 
 
 def plot_results(data: pd.DataFrame, output_path: str):
-    sns.barplot(
-        data=data, x="system", y="aggregate", hue="model", palette="Set1"
-    )
+    sns.barplot(data=data, x="system", y="aggregate", hue="model", palette="Set1")
     plt.set_title("Performance with customized metric", fontsize=15)
     plt.savefig(output_path, dpi=1000)
     plt.show()
