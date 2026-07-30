@@ -23,7 +23,7 @@ def format_results(path: str) -> pd.DataFrame:
     for f in files:
         model = f.split("_")[0]
         data = pd.read_csv(f"{path}/{f}")
-        new = pd.DataFrame(data.aggregate("mean"), columns=["aggregate"])
+        new = pd.DataFrame(data.aggregate("median"), columns=["aggregate"])
         trans_new["model"] = model
         trans_new["system"] = list(trans_data.index)
         df_list.append(trans_new)

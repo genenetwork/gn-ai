@@ -31,19 +31,40 @@ def format_results(path: str) -> pd.DataFrame:
     return df_concat
 
 
-def plot_results(data: pd.DataFrame, output_path: str):
-    fig, axes = plt.subplots(3, 2, figsize=(10, 10))
+def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
+    fig, axes = plt.subplots(len(columns), 1, figsize=(10, 10))
     axes = axes.flatten()
-    columns = list(data.columns)[:5]
     for ind, column in enumerate(columns):
         sns.barplot(
-            data=data, ax=axes[ind], x="system", y=column, hue="model", palette="Set1"
+            data=data,
+            ax=axes[ind],
+            x="system",
+            y=column,
+            hue="model",
+            palette="Set1",
+            estimator="median",
         )
-    fig.suptitle("Performance with traditional metrics", fontsize=15)
-    fig.delaxes(axes[-1])
+    fig.suptitle(title, fontsize=15)
     plt.tight_layout()
     plt.savefig(output_path, dpi=1000)
     plt.show()
+
+
+def plot_results(data: pd.DataFrame, output_path: str):
+    metrics = list(data.columns)[:3]
+    plot(
+        data,
+        metrics,
+        f"{output_path}/barplot_traditional_metrics.png",
+        "Performance with traditional metrics",
+    )
+    extras = list(data.columns)[3:5]
+    plot(
+        data,
+        extras,
+        f"{output_path}/barplot_extra_metrics.png",
+        "Insights from additional metrics",
+    )
 
 
 if __name__ == "__main__":
