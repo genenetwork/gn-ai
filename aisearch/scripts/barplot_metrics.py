@@ -21,7 +21,7 @@ def format_results(path: str) -> pd.DataFrame:
     files = os.listdir(path)
     df_list = []
     for f in files:
-        model = f.split("_")[0]
+        model = f.strip("_simple_results.csv")
         data = pd.read_csv(f"{path}/{f}", index_col=0)
         trans_data = data.transpose()
         trans_data["model"] = model
