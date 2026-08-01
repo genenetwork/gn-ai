@@ -37,13 +37,13 @@ def format_results(path: str) -> pd.DataFrame:
 
 def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
     sns.boxplot(data=data, x="system", y="satisfaction frequency")
-    plt.suptitle("System performance with customized metric", fontsize=15)
+    plt.suptitle("System performance with customized metric", fontsize=10)
     plt.savefig(output1_path, dpi=1000)
     plt.show()
     sns.barplot(
         data=data, x="system", y="satisfaction frequency", hue="model", palette="Set1"
     )
-    plt.suptitle("Model performance with customized metric", fontsize=15)
+    plt.suptitle("Model performance with customized metric", fontsize=10)
     plt.savefig(output2_path, dpi=1000)
     plt.show()
 
