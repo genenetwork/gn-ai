@@ -14,11 +14,11 @@ if INPUT_PATH is None:
 
 OUTPUT1_PATH = os.getenv("OUTPUT1_PATH")
 if OUTPUT1_PATH is None:
-    raise FileNotFoundError("Set OUTPUT1_PATH or path to save final plot for systems")
+    raise FileNotFoundError("Set OUTPUT1_PATH or path to save final boxplot for systems")
 
 OUTPUT2_PATH = os.getenv("OUTPUT2_PATH")
 if OUTPUT2_PATH is None:
-    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final plot for models")
+    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final barplot for models")
 
 
 def format_results(path: str) -> pd.DataFrame:
@@ -27,7 +27,7 @@ def format_results(path: str) -> pd.DataFrame:
     for f in files:
         model = f.strip("_dspy_results.csv")
         data = pd.read_csv(f"{path}/{f}")
-        new = pd.DataFrame(data.aggregate("median"), columns=["satisfaction frequency"])
+        new = pd.DataFrame(data.aggregate("median"), columns=["satisfaction frequency (%)"])
         new["model"] = model
         new["system"] = list(new.index)
         df_list.append(new)
@@ -36,12 +36,12 @@ def format_results(path: str) -> pd.DataFrame:
 
 
 def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
-    sns.boxplot(data=data, x="system", y="satisfaction frequency")
+    sns.boxplot(data=data, x="system", y="satisfaction frequency (%)")
     plt.suptitle("System performance with customized metric", fontsize=10)
     plt.savefig(output1_path, dpi=1000)
     plt.show()
     sns.barplot(
-        data=data, x="system", y="satisfaction frequency", hue="model", palette="Set1"
+        data=data, x="system", y="satisfaction frequency (%)", hue="model", palette="Set1"
     )
     plt.suptitle("Model performance with customized metric", fontsize=10)
     plt.savefig(output2_path, dpi=1000)

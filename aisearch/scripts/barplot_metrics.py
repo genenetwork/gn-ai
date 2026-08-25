@@ -53,10 +53,10 @@ def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
 def plot_results(data: pd.DataFrame, output_path: str):
     metrics = list(data.columns)[:3]
     plot(
-        data,
+        pd.concat([data[metrics]*100, data[["system", "model"]]], axis=1),
         metrics,
         f"{output_path}/barplot_traditional_metrics.png",
-        "Performance with traditional metrics",
+        "Performance with standard classification metrics",
     )
     extras = list(data.columns)[3:5]
     plot(
