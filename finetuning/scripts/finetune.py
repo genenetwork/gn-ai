@@ -20,7 +20,7 @@ from transformers import (
     PreTrainedTokenizer,
     TrainingArguments,
 )
-from trl import SFTTrainer, SFTConfig
+from trl import SFTConfig, SFTTrainer
 
 
 def format_example(
@@ -90,10 +90,10 @@ def finetune(
     model, tokenizer = prepare_model(model_name)
     dataset = prepare_data(dataset_path, question_field, answer_field, tokenizer)
     sft_config = SFTConfig(
-    output_dir=output_path,
-    dataset_text_field="data",
-    bf16=False,
-    fp16=False,
+        output_dir=output_path,
+        dataset_text_field="data",
+        bf16=False,
+        fp16=False,
     )
     trainer = SFTTrainer(
         model=model,
@@ -105,7 +105,7 @@ def finetune(
     basename = model_name.split("/")[-1]
     finetuned_name = f"{output_path}/{basename}-lora-finetuned"
     trainer.model.save_pretrained(finetuned_name)
-    new_model = AutoPeftModelForCausalLM(
+    new_model = AutoPeftModelForCausalLM.from_pretrained(
         finetuned_name,
         device_map="auto",
     )
