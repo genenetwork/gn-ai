@@ -1,6 +1,8 @@
 """Script to finetune local model for GeneNetwork"""
 
+import json
 import os
+from pathlib import Path
 
 import pandas as pd
 import torch
@@ -19,6 +21,7 @@ from transformers import (
     BitsAndBytesConfig,
     PreTrainedTokenizer,
     TrainingArguments,
+    pipeline,
 )
 from trl import SFTConfig, SFTTrainer
 
@@ -80,15 +83,26 @@ def prepare_model(model_name: str) -> tuple[PeftModel, PreTrainedTokenizer]:
     return model, tokenizer
 
 
-def finetune(
+def prepare(
     model_name: str,
     dataset_path: str,
-    output_path: str,
     question_field: str,
     answer_field: str,
-):
+    local_dataset: bool = False,
+) -> tuple[Dataset, PreTrainedTokenizer, PeftModel]:
     model, tokenizer = prepare_model(model_name)
-    dataset = prepare_data(dataset_path, question_field, answer_field, tokenizer)
+    dataset = prepare_data(
+        dataset_path, question_field, answer_field, tokenizer, local_path=local_dataset
+    )
+    return dataset, tokenizer, model
+
+
+def finetune(
+    instruction_set: Dataset,
+    tokenizer: PreTrainedTokenizer,
+    model: PeftModel,
+    output_path: str,
+) -> AutoModelForCausalLM:
     sft_config = SFTConfig(
         output_dir=output_path,
         dataset_text_field="data",
@@ -97,7 +111,7 @@ def finetune(
     )
     trainer = SFTTrainer(
         model=model,
-        train_dataset=dataset["train"],
+        train_dataset=instruction_set["train"],
         args=sft_config,
         processing_class=tokenizer,
     )
@@ -111,13 +125,73 @@ def finetune(
     )
     merged_model = new_model.merge_and_unload()
     merged_model.save_pretrained(f"{output_path}/{basename}-lora-merged")
+    return merged_model
+
+
+def test(
+    instruction_set: Dataset,
+    tokenizer: PreTrainedTokenizer,
+    model: AutoModelForCausalLM,
+) -> list[dict[str, str]]:
+    pipe = pipeline(task="text-generation", model=model, tokenizer=tokenizer)
+    test_results = []
+    for instance in instruction_set["test"].select(range(100)):
+        prompt = instance["data"]
+        content = prompt.split(">")
+        user_content = content[:3]
+        assistant_content = content[3:]
+        new_prompt = f"{'>'.join(user_content)}>"
+        true_answer = ">".join(assistant_content)
+        llm_answer = pipe(new_prompt)[0]["generated_text"]
+        test_results.append(
+            {
+                "User prompt": new_prompt,
+                "Model answer": llm_answer,
+                "True answer": true_answer,
+            }
+        )
+    return test_results
 
 
 if __name__ == "__main__":
     load_dotenv()
-    MODEL_NAME = os.environ["MODEL_NAME"]
-    DATASET_PATH = os.environ["DATASET_PATH"]
-    OUTPUT_PATH = os.environ["OUTPUT_PATH"]
-    QUESTION_FIELD = os.environ["QUESTION_FIELD"]
-    ANSWER_FIELD = os.environ["ANSWER_FIELD"]
-    finetune(MODEL_NAME, DATASET_PATH, OUTPUT_PATH, QUESTION_FIELD, ANSWER_FIELD)
+    model_name = os.environ["MODEL_NAME"]
+    dataset_path = os.environ["DATASET_PATH"]
+    output_path = os.environ["OUTPUT_PATH"]
+    question_field = os.environ["QUESTION_FIELD"]
+    answer_field = os.environ["ANSWER_FIELD"]
+    local_dataset = os.getenv("LOCAL_DATASET")
+
+    if local_dataset is None:
+        dataset, tokenizer, model = prepare(
+            model_name, dataset_path, question_field, answer_field
+        )
+    else:
+        dataset, tokenizer, model = prepare(
+            model_name, dataset_path, question_field, answer_field, local_dataset=True
+        )
+
+    if not Path(output_path).exists():
+        finetuned_model = finetune(dataset, tokenizer, model, output_path)
+    else:
+        finetuned_model = AutoModelForCausalLM.from_pretrained(
+            f"{output_path}/{model_name.split('/')[-1]}-lora-merged", device_map="auto"
+        )
+
+    base_model = AutoModelForCausalLM.from_pretrained(
+        model_name,
+        device_map="auto",
+    )
+    base_results = test(dataset, tokenizer, base_model)
+    finetuned_results = test(dataset, tokenizer, finetuned_model)
+
+    with open(f"{output_path}/test_results.json", "w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "Before finetuning": base_results,
+                    "After finetuning": finetuned_results,
+                },
+                indent=4,
+            )
+        )
