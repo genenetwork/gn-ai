@@ -171,11 +171,12 @@ if __name__ == "__main__":
             model_name, dataset_path, question_field, answer_field, local_dataset=True
         )
 
-    if not Path(output_path).exists():
+    finetuned_path = f"{output_path}/{model_name.split('/')[-1]}-lora-merged"
+    if not Path(finetuned_path).exists():
         finetuned_model = finetune(dataset, tokenizer, model, output_path)
     else:
         finetuned_model = AutoModelForCausalLM.from_pretrained(
-            f"{output_path}/{model_name.split('/')[-1]}-lora-merged", device_map="auto"
+            finetuned_path, device_map="auto"
         )
 
     base_model = AutoModelForCausalLM.from_pretrained(
