@@ -30,13 +30,20 @@ def format_example(
     example: dict[str, str],
     question_field: str,
     answer_field: str,
+    tuning_instruction: str,
     tokenizer: PreTrainedTokenizer,
 ) -> dict[str, str]:
     question = example[question_field]
     answer = example[answer_field]
     prompt = [
-        {"content": question, "role": "user"},
-        {"content": answer, "role": "assistant"},
+        {
+            "content": f"Your task is to: {tuning_instruction}\nThe question is: {question}",
+            "role": "user",
+        },
+        {
+            "content": f"I understand. The solution to the task is: {answer}",
+            "role": "assistant",
+        },
     ]
     formatted_prompt = tokenizer.apply_chat_template(prompt, tokenize=False)
     return {"data": formatted_prompt}
@@ -46,6 +53,7 @@ def prepare_data(
     dataset_path: str,
     question_field: str,
     answer_field: str,
+    tuning_instruction: str,
     tokenizer: PreTrainedTokenizer,
     local_path: bool = False,
 ) -> Dataset:
@@ -60,6 +68,7 @@ def prepare_data(
             "question_field": question_field,
             "answer_field": answer_field,
             "tokenizer": tokenizer,
+            "tuning_instruction": tuning_instruction,
         },
     )
 
@@ -88,11 +97,17 @@ def prepare(
     dataset_path: str,
     question_field: str,
     answer_field: str,
+    tuning_instruction: str,
     local_dataset: bool = False,
 ) -> tuple[Dataset, PreTrainedTokenizer, PeftModel]:
     model, tokenizer = prepare_model(model_name)
     dataset = prepare_data(
-        dataset_path, question_field, answer_field, tokenizer, local_path=local_dataset
+        dataset_path,
+        question_field,
+        answer_field,
+        tuning_instruction,
+        tokenizer,
+        local_path=local_dataset,
     )
     return dataset, tokenizer, model
 
@@ -160,15 +175,21 @@ if __name__ == "__main__":
     output_path = os.environ["OUTPUT_PATH"]
     question_field = os.environ["QUESTION_FIELD"]
     answer_field = os.environ["ANSWER_FIELD"]
+    tuning_instruction = os.environ["TUNING_INSTRUCTION"]
     local_dataset = os.getenv("LOCAL_DATASET")
 
     if local_dataset is None:
         dataset, tokenizer, model = prepare(
-            model_name, dataset_path, question_field, answer_field
+            model_name, dataset_path, question_field, answer_field, tuning_instruction
         )
     else:
         dataset, tokenizer, model = prepare(
-            model_name, dataset_path, question_field, answer_field, local_dataset=True
+            model_name,
+            dataset_path,
+            question_field,
+            answer_field,
+            tuning_instruction,
+            local_dataset=True,
         )
 
     finetuned_path = f"{output_path}/{model_name.split('/')[-1]}-lora-merged"
