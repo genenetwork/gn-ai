@@ -178,6 +178,7 @@ if __name__ == "__main__":
     tuning_instruction = os.environ["TUNING_INSTRUCTION"]
     local_dataset = os.getenv("LOCAL_DATASET")
 
+    torch.manual_seed(100)
     if local_dataset is None:
         dataset, tokenizer, model = prepare(
             model_name, dataset_path, question_field, answer_field, tuning_instruction
