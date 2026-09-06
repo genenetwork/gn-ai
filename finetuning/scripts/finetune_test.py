@@ -3,10 +3,12 @@
 import json
 import os
 from pathlib import Path
+from typing import Any
 
+import optuna
 import pandas as pd
 import torch
-from datasets import Dataset, load_dataset
+from datasets import Dataset, concatenate_datasets, load_dataset
 from dotenv import load_dotenv
 from peft import (
     AutoPeftModelForCausalLM,
@@ -112,21 +114,81 @@ def prepare(
     return dataset, tokenizer, model
 
 
-def finetune(
+def search_objective(
+    trial: int,
     instruction_set: Dataset,
     tokenizer: PreTrainedTokenizer,
     model: PeftModel,
     output_path: str,
-) -> AutoModelForCausalLM:
+) -> float:
+    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-3, log=True)
+    batch_size = trial.suggest_categorical("batch_size", [2, 4, 8])
+    epochs = trial.suggest_int("num_epochs", 1, 5)
+
     sft_config = SFTConfig(
-        output_dir=output_path,
+        output_dir=f"{output_path}/search",
         dataset_text_field="data",
+        learning_rate=learning_rate,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
+        num_train_epochs=epochs,
+        eval_strategy="steps",
+        eval_steps=50,
+        metric_for_best_model="eval_loss",
         bf16=False,
         fp16=False,
     )
     trainer = SFTTrainer(
         model=model,
         train_dataset=instruction_set["train"],
+        eval_dataset=instruction_set["validation"],
+        args=sft_config,
+        processing_class=tokenizer,
+    )
+    train_result = trainer.train()
+    return train_result.training_loss
+
+
+def search(
+    instruction_set: Dataset,
+    tokenizer: PreTrainedTokenizer,
+    model: PeftModel,
+    output_path: str,
+) -> dict[str, Any]:
+    sampler = optuna.samplers.TPESampler(seed=100)
+    study = optuna.create_study(direction="minimize", sampler=sampler)
+    wrapper_objective = lambda trial: search_objective(
+        trial,
+        instruction_set=instruction_set,
+        tokenizer=tokenizer,
+        model=model,
+        output_path=output_path,
+    )
+    study.optimize(wrapper_objective, n_trials=10)
+    return study.best_params
+
+
+def finetune(
+    instruction_set: Dataset,
+    tokenizer: PreTrainedTokenizer,
+    model: PeftModel,
+    output_path: str,
+    best_params: dict[str, Any],
+) -> AutoModelForCausalLM:
+    sft_config = SFTConfig(
+        output_dir=f"{output_path}/best",
+        dataset_text_field="data",
+        learning_rate=best_params.get("learning_rate"),
+        per_device_train_batch_size=best_params.get("batch_size"),
+        num_train_epochs=best_params.get("epochs"),
+        bf16=False,
+        fp16=False,
+    )
+    trainer = SFTTrainer(
+        model=model,
+        train_dataset=concatenate_datasets(
+            [instruction_set["train"], instruction_set["validation"]]
+        ),
         args=sft_config,
         processing_class=tokenizer,
     )
@@ -195,7 +257,8 @@ if __name__ == "__main__":
 
     finetuned_path = f"{output_path}/{model_name.split('/')[-1]}-lora-merged"
     if not Path(finetuned_path).exists():
-        finetuned_model = finetune(dataset, tokenizer, model, output_path)
+        best_params = search(dataset, tokenizer, model, output_path)
+        finetuned_model = finetune(dataset, tokenizer, model, output_path, best_params)
     else:
         finetuned_model = AutoModelForCausalLM.from_pretrained(
             finetuned_path, device_map="auto"

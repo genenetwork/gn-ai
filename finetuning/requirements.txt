@@ -7,3 +7,4 @@ transformers
 peft
 trl
 python-dotenv
+optuna
