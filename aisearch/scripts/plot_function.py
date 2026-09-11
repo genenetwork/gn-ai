@@ -14,7 +14,9 @@ if INPUT_PATH is None:
 
 OUTPUT1_PATH = os.getenv("OUTPUT1_PATH")
 if OUTPUT1_PATH is None:
-    raise FileNotFoundError("Set OUTPUT1_PATH or path to save final boxplot for systems")
+    raise FileNotFoundError(
+        "Set OUTPUT1_PATH or path to save final boxplot for systems"
+    )
 
 OUTPUT2_PATH = os.getenv("OUTPUT2_PATH")
 if OUTPUT2_PATH is None:
@@ -27,31 +29,52 @@ def format_results(path: str) -> pd.DataFrame:
     for f in files:
         model = f.strip("_dspy_results.csv")
         data = pd.read_csv(f"{path}/{f}")
-        new = pd.DataFrame(data.aggregate("median"), columns=["satisfaction frequency (%)"])
+        new = pd.DataFrame(
+            data.aggregate("median"), columns=["satisfaction frequency (%)"]
+        )
         new["model"] = model
         new["system"] = list(new.index)
         df_list.append(new)
     df_concat = pd.concat(df_list)
-    df_concat["model_order"] = pd.Categorical(df_concat["model"], categories=["gptoss_20b", "qwen3_30b", "haiku_4.5", "qwen3_30b_opus_4.8", "haiku_4.5_opus_4.8", "opus_4.8"], ordered=False)
-    df_concat["system_order"] = pd.Categorical(df_concat["system"], categories=["base", "rag", "graph rag", "agent", "hybird"], ordered=False)
+    df_concat["model_order"] = pd.Categorical(
+        df_concat["model"],
+        categories=[
+            "gptoss_20b",
+            "qwen3_30b",
+            "haiku_4.5",
+            "qwen3_30b_opus_4.8",
+            "haiku_4.5_opus_4.8",
+            "opus_4.8",
+        ],
+        ordered=False,
+    )
+    df_concat["system_order"] = pd.Categorical(
+        df_concat["system"],
+        categories=["base", "rag", "graph rag", "agent", "hybird"],
+        ordered=False,
+    )
     return df_concat.sort_values(by=["system_order", "model_order"])
 
 
 def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
-    sns.boxplot(data=data, x="system", y="satisfaction frequency (%)")
-    plt.suptitle("System performance with customized metric", fontsize=10)
+    sns.boxplot(data=data, x="system", y="satisfaction frequency (%)", color="#708090")
+    sns.swarmplot(
+        data=data,
+        x="system",
+        y="satisfaction frequency (%)",
+        hue="model",
+        palette="ocean_r",
+    )
     plt.savefig(output1_path, dpi=1000)
     plt.show()
-    palette = [
-        sns.color_palette("Blues_d")[2], 
-        sns.color_palette("Blues_d", 4)[3],
-        sns.color_palette("Blues_d", 7)[6],
-        sns.color_palette("Greens_d")[2], 
-        sns.color_palette("Greens", 4)[3],
-        sns.color_palette("Greens", 7)[6]
-    ]
     axb = sns.barplot(
-        data=data, x="system", y="satisfaction frequency (%)", hue="model", palette=palette, width=0.5, edgecolor="none",
+        data=data,
+        x="system",
+        y="satisfaction frequency (%)",
+        hue="model",
+        palette="ocean_r",
+        width=0.5,
+        edgecolor="none",
     )
     for ind, container in enumerate(axb.containers):
         if ind == 0 or ind == 5:
