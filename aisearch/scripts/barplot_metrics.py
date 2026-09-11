@@ -8,27 +8,41 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
-INPUT_PATH = os.getenv("INPUT_PATH")
-if INPUT_PATH is None:
-    raise FileNotFoundError("Set INPUT_PATH or path to results directory")
+INPUT1_PATH = os.getenv("INPUT1_PATH")
+if INPUT1_PATH is None:
+    raise FileNotFoundError("Set INPUT1_PATH or path to simple results directory")
+
+INPUT2_PATH = os.getenv("INPUT2_PATH")
+if INPUT2_PATH is None:
+    raise FileNotFoundError("Set INPUT2_PATH or path to dspy results directory")
 
 OUTPUT_PATH = os.getenv("OUTPUT_PATH")
 if OUTPUT_PATH is None:
     raise FileNotFoundError("Set OUTPUT_PATH or path to save final plot")
 
 
-def format_results(path: str) -> pd.DataFrame:
-    files = os.listdir(path)
+def format_results(simple_path: str, dspy_path: str) -> pd.DataFrame:
     df_list = []
-    for f in files:
+    simple_files = os.listdir(simple_path)
+    for f in simple_files:
         model = f.strip("_simple_results.csv")
-        data = pd.read_csv(f"{path}/{f}", index_col=0)
+        data = pd.read_csv(f"{simple_path}/{f}", index_col=0)
         trans_data = data.transpose()
+        trans_data = pd.concat(
+            [trans_data[column] * 100 for column in trans_data.columns], axis=1
+        )
         trans_data["model"] = model
         trans_data["system"] = [sys[:-2] for sys in list(trans_data.index)]
         df_list.append(trans_data)
-    df_concat = pd.concat(df_list)
-    return df_concat
+    final_concat = pd.concat(df_list)
+    dspy_files = os.listdir(dspy_path)
+    cumul = []
+    for f in dspy_files:
+        data = pd.read_csv(f"{dspy_path}/{f}")
+        aligned = pd.concat([data[column] for column in data.columns])
+        cumul.extend(aligned)
+    final_concat["satisfaction frequency (%)"] = cumul
+    return final_concat
 
 
 def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
@@ -38,11 +52,10 @@ def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
         sns.barplot(
             data=data,
             ax=axes[ind],
-            x="system",
-            y=column,
+            y="system",
+            x=column,
             hue="model",
-            palette="Set1",
-            estimator="median",
+            palette="ocean_r",
         )
     fig.suptitle(title, fontsize=15)
     plt.tight_layout()
@@ -52,10 +65,11 @@ def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
 
 def plot_results(data: pd.DataFrame, output_path: str):
     metrics = list(data.columns)[:3]
+    metrics.append(data.columns[-1])
     plot(
-        pd.concat([data[metrics]*100, data[["system", "model"]]], axis=1),
+        data,
         metrics,
-        f"{output_path}/barplot_traditional_metrics.png",
+        f"{output_path}/barplot_standard_metrics.png",
         "Performance with standard classification metrics",
     )
     extras = list(data.columns)[3:5]
@@ -68,5 +82,5 @@ def plot_results(data: pd.DataFrame, output_path: str):
 
 
 if __name__ == "__main__":
-    df = format_results(INPUT_PATH)
+    df = format_results(INPUT1_PATH, INPUT2_PATH)
     plot_results(df, OUTPUT_PATH)
