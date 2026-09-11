@@ -20,7 +20,7 @@ if OUTPUT1_PATH is None:
 
 OUTPUT2_PATH = os.getenv("OUTPUT2_PATH")
 if OUTPUT2_PATH is None:
-    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final barplot for models")
+    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final heatmap for models")
 
 
 def format_results(path: str) -> pd.DataFrame:
