@@ -70,7 +70,7 @@ def plot_results(data: pd.DataFrame, output_path: str):
         data,
         metrics,
         f"{output_path}/barplot_standard_metrics.png",
-        "Performance with standard classification metrics",
+        "Performance comparison of standard and new metrics",
     )
     extras = list(data.columns)[3:5]
     plot(
