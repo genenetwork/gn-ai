@@ -50,7 +50,7 @@ def format_results(path: str) -> pd.DataFrame:
     )
     df_concat["system_order"] = pd.Categorical(
         df_concat["system"],
-        categories=["base", "rag", "graph rag", "agent", "hybird"],
+        categories=["base", "rag", "graph rag", "agent", "hybrid"],
         ordered=False,
     )
     return df_concat.sort_values(by=["system_order", "model_order"])
@@ -67,19 +67,26 @@ def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
     )
     plt.savefig(output1_path, dpi=1000)
     plt.show()
-    axb = sns.barplot(
-        data=data,
-        x="system",
-        y="satisfaction frequency (%)",
-        hue="model",
-        palette="ocean_r",
-        width=0.5,
-        edgecolor="none",
+    heatmap_data = data.pivot(
+        index="model", columns="system", values="satisfaction frequency (%)"
     )
-    for ind, container in enumerate(axb.containers):
-        if ind == 0 or ind == 5:
-            axb.bar_label(container, fmt="%.0f", padding=1, fontsize=7)
+    heatmap_data = heatmap_data.reindex(
+        index=[
+            "opus_4.8",
+            "haiku_4.5_opus_4.8",
+            "qwen3_30b_opus_4.8",
+            "haiku_4.5",
+            "qwen3_30b",
+            "gptoss_20b",
+        ],
+        columns=["base", "rag", "graph rag", "agent", "hybrid"],
+    )
+    axb = sns.heatmap(
+        data=heatmap_data,
+        cmap="ocean_r",
+    )
     plt.suptitle("Model performance with customized metric", fontsize=10)
+    plt.tight_layout()
     plt.savefig(output2_path, dpi=1000)
     plt.show()
 
