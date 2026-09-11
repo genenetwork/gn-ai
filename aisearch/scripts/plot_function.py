@@ -32,7 +32,9 @@ def format_results(path: str) -> pd.DataFrame:
         new["system"] = list(new.index)
         df_list.append(new)
     df_concat = pd.concat(df_list)
-    return df_concat
+    df_concat["model_order"] = pd.Categorical(df_concat["model"], categories=["gptoss_20b", "qwen3_30b", "haiku_4.5", "qwen3_30b_opus_4.8", "haiku_4.5_opus_4.8", "opus_4.8"], ordered=False)
+    df_concat["system_order"] = pd.Categorical(df_concat["system"], categories=["base", "rag", "graph rag", "agent", "hybird"], ordered=False)
+    return df_concat.sort_values(by=["system_order", "model_order"])
 
 
 def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
@@ -40,9 +42,20 @@ def plot_results(data: pd.DataFrame, output1_path: str, output2_path: str):
     plt.suptitle("System performance with customized metric", fontsize=10)
     plt.savefig(output1_path, dpi=1000)
     plt.show()
-    sns.barplot(
-        data=data, x="system", y="satisfaction frequency (%)", hue="model", palette="Set1"
+    palette = [
+        sns.color_palette("Blues_d")[2], 
+        sns.color_palette("Blues_d", 4)[3],
+        sns.color_palette("Blues_d", 7)[6],
+        sns.color_palette("Greens_d")[2], 
+        sns.color_palette("Greens", 4)[3],
+        sns.color_palette("Greens", 7)[6]
+    ]
+    axb = sns.barplot(
+        data=data, x="system", y="satisfaction frequency (%)", hue="model", palette=palette, width=0.5, edgecolor="none",
     )
+    for ind, container in enumerate(axb.containers):
+        if ind == 0 or ind == 5:
+            axb.bar_label(container, fmt="%.0f", padding=1, fontsize=7)
     plt.suptitle("Model performance with customized metric", fontsize=10)
     plt.savefig(output2_path, dpi=1000)
     plt.show()
