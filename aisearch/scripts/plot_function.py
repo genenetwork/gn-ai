@@ -20,7 +20,7 @@ if OUTPUT1_PATH is None:
 
 OUTPUT2_PATH = os.getenv("OUTPUT2_PATH")
 if OUTPUT2_PATH is None:
-    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final heatmap for models")
+    raise FileNotFoundError("Set OUTPUT2_PATH or path to save final barplot for models")
 
 
 def format_results(path: str) -> tuple[pd.DataFrame]:
@@ -105,23 +105,26 @@ def plot_results(
     )
     plt.savefig(output1_path, dpi=1000)
     plt.show()
-    heatmap_data = aggr_data.pivot(
-        index="model", columns="system", values="satisfaction frequency (%)"
-    )
-    heatmap_data = heatmap_data.reindex(
-        index=[
-            "opus_4.8",
-            "haiku_4.5_opus_4.8",
-            "qwen3_30b_opus_4.8",
-            "haiku_4.5",
-            "qwen3_30b",
-            "gptoss_20b",
-        ],
-        columns=["base", "rag", "graph rag", "agent", "hybrid"],
-    )
-    axb = sns.heatmap(
-        data=heatmap_data,
-        cmap="ocean_r",
+    # heatmap_data = aggr_data.pivot(
+    #     index="model", columns="system", values="satisfaction frequency (%)"
+    # )
+    # heatmap_data = heatmap_data.reindex(
+    #     index=[
+    #         "opus_4.8",
+    #         "haiku_4.5_opus_4.8",
+    #         "qwen3_30b_opus_4.8",
+    #         "haiku_4.5",
+    #         "qwen3_30b",
+    #         "gptoss_20b",
+    #     ],
+    #     columns=["base", "rag", "graph rag", "agent", "hybrid"],
+    # )
+    sns.barplot(
+        full_data,
+        x="system",
+        y="satisfaction frequency (%)",
+        hue="model",
+        palette="ocean_r",
     )
     plt.suptitle("Model performance with customized metric", fontsize=10)
     plt.tight_layout()
