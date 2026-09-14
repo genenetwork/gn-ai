@@ -60,7 +60,7 @@ def format_results(path: str) -> tuple[pd.DataFrame]:
     )
     full_concat["system_order"] = pd.Categorical(
         full_concat["system"],
-        categories=["base", "rag", "graph rag", "agent", "hybrid"],
+        categories=["base", "rag", "graph rag", "agent", "combi"],
         ordered=False,
     )
 
@@ -79,7 +79,7 @@ def format_results(path: str) -> tuple[pd.DataFrame]:
     )
     aggr_concat["system_order"] = pd.Categorical(
         aggr_concat["system"],
-        categories=["base", "rag", "graph rag", "agent", "hybrid"],
+        categories=["base", "rag", "graph rag", "agent", "combi"],
         ordered=False,
     )
     return full_concat.sort_values(
