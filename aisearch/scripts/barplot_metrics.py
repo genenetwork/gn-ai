@@ -52,8 +52,8 @@ def plot(data: pd.DataFrame, columns: list[str], output_path: str, title: str):
         sns.barplot(
             data=data,
             ax=axes[ind],
-            y="system",
-            x=column,
+            x="system",
+            y=column,
             hue="model",
             palette="ocean_r",
         )
